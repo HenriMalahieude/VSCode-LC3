@@ -10,14 +10,35 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:ucr-lc3.helloWorld"
+    "onCommand:ucr-lc3.rehighlight"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "ucr-lc3.helloWorld",
-        "title": "Hello World"
+        "command": "ucr-lc3.rehighlight",
+        "title": "Rehighlight"
+      }
+    ],
+    "languages":[
+      {
+        "id": "LC3",
+        "aliases": [
+          "LC-3",
+          "LC3"
+        ],
+        "extensions": [
+          ".asm",
+          ".lc3"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars" : [
+      {
+        "language": "LC3",
+        "scopeName": "source.asm",
+        "path": "./syntaxes/lc3.tmLanguage.json"
       }
     ]
   },
