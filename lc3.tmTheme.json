@@ -1,0 +1,37 @@
+{
+	"name": "LC3",
+	"tokenColors": [
+	  {
+		"scope": "namespace.pseudo_op",
+		"settings": {
+		  "foreground": "#dddd00",
+		  "fontStyle": "italic"
+		}
+	  },
+	  {
+		"scope": "enum.register",
+		"settings": {
+		  "foreground": "#00dd00"
+		}
+	  },
+	  {
+		"scope": "number.hexadecimal",
+		"settings": {
+		  "foreground": "#dd0000"
+		}
+	  },
+	  {
+		"scope": "number.binary",
+		"settings": {
+		  "foreground": "#dd8800"
+		}
+	  },
+	  {
+		"scope": "number.decimal",
+		"settings": {
+		  "foreground": "#88dd00"
+		}
+	  }
+	],
+	"semanticHighlighting": true
+  }

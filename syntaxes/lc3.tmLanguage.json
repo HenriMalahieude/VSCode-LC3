@@ -1,74 +1,69 @@
 {
 	"scopeName": "source.asm",
 	"patterns": [
-		{"include": "#triple"}, 
-		{"include": "#double"}, 
-		{"include": "#single"},
-		{"include": "#simple"},
-		{"include": "#synonym"},
-		{"include": "#precompile"},
+		{"include": "#operator"},
+		{"include": "#register"},
+		{"include": "#literal"},
+		{"include": "#string"},
 		{"include": "#comment"}
 	],
 	"repository":{
-		"triple": {
-			"patterns": [{"include": "#operator"}, {"include": "#register"}, {"include": "#register"}, {"include": "#literal"}]
-		},
-		"double": {
-			"patterns": [{"include": "#operator"}, {"include": "#register"}, {"include": "#literal"}]
-		},
-		"single": {
-			"patterns": [{"include": "#operator"}, {"include": "#literal"}]
-		},
-		"simple": {
-			"patterns": [{"include": "#operator"}]
-		},
-		"synonym":{
-			"match": "GETC|\\s{1}getc|OUT|\\s{1}out|PUTS|\\s{1}puts|IN|\\s{1}in|HALT|halt",
-			"name": "macro.trapvector"
-		},
-		
-		"precompile":{
-			"begins": "#pseudo_op",
-			"ends": "#literal",
-			"name": "precompiler.info"
-		},
-		"pseudo_op":{
-			"match":"\\.\\w+",
-			"name": "namespace.pseudo_op"
-		},
-
-		"register":{
-			"match":"R[0-7]|r[0-7]",
-			"name":"enum.register"
-		},
-
-		"literal":{
-			"patterns":[{"include": "#number"}, {"include": "#label"}]
-		},
-		"number":{
-			"patterns":[{"include":"#hexadecimal"}, {"include": "#binary"}, {"include": "#decimal"}]
-		},
-		"hexadecimal":{
-			"match":"[x][0-9a-fA-F]+",
-			"name": "number.hexadecimal"
-		},
-		"binary":{
-			"match": "[b][0-1]+",
-			"name": "number.binary"
-		},
-		"decimal":{
-			"match": "[#][0-9]+|[#]-[0-9]+",
-			"name": "number.decimal"
-		},
-
-		"comment":{
-			"match": ";[\\s\\S]*",
-			"name": "comment"
-		},
-
 		"operator":{
-			"match": "ADD|add",
-			"name": "keyword.operator"
+			"patterns":[
+				{
+					"name": "keyword",
+					"match": "\\b(ADD|add|NOT|not|AND|and)\\b"
+				},
+				{
+					"name": "keyword",
+					"match": "\\b(BR|br|BRn|brn|BRz|brz|BRp|brp|BRnz|brnz|BRnp|brnp|BRzp|brzp|BRnzp|brnzp|JMP|jmp|JSR|jsr|RET|ret|JSRR|jsrr|RTI|rti|TRAP|trap)\\b"
+				},
+				{
+					"name": "keyword",
+					"match": "\\b(GETC|getc|OUT|out|PUTS|puts|IN|in|HALT|halt)\\b"
+				},
+				{
+					"name": "keyword",
+					"match": "\\b(ST|st|STR|str|STI|sti|LEA|lea|LD|ld|LDR|ldr|LDI|ldi)\\b"
+				},
+				{
+					"name": "namespace.pseudo_op",
+					"match": "\\b(ORIG|orig|FILL|fill|BLKW|blkw|STRINGZ|stringz|END|end)\\b"
+				}
+			]
+		},
+		"register":{
+			"name": "enum.register",
+			"match": "\\bR[0-7]|r[0-7]\\b"
+		},
+		"string":{
+			"name": "string.quoted.double",
+			"begin": "\"",
+			"end": "\""
+		},
+		"comment":{
+			"name": "comment",
+			"match": ";[\\s\\S]*\n"
+		},
+		"literal":{
+			"patterns":[
+				{
+					"name": "number.hexadecimal",
+					"match": "\\b[x][0-9a-fA-F]+\\b"
+				},
+				{
+					"name": "number.binary",
+					"match": "\\b[b][0-1]+\\b"
+				},
+				{
+					"name": "number.decimal",
+					"match": "\\s{1}[#][0-9]+|[#]-[0-9]+\\s{1}"
+				},
+				{
+					"name": "label",
+					"match": "\\b[A-Za-z][A-Za-z0-9_]+\\b"
+				}
+			]
 		}
 	}
 }
