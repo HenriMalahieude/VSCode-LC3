@@ -40,9 +40,6 @@
         "scopeName": "source.asm",
         "path": "./syntaxes/lc3.tmLanguage.json"
       }
-    ],
-    "semanticTokenScopes": [
-      
     ]
   },
   "scripts": {

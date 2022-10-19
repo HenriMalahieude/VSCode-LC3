@@ -11,29 +11,29 @@
 		"operator":{
 			"patterns":[
 				{
-					"name": "keyword",
+					"name": "keyword.math.lc3asm",
 					"match": "\\b(ADD|add|NOT|not|AND|and)\\b"
 				},
 				{
-					"name": "keyword",
+					"name": "keyword.ctrl.lc3asm",
 					"match": "\\b(BR|br|BRn|brn|BRz|brz|BRp|brp|BRnz|brnz|BRnp|brnp|BRzp|brzp|BRnzp|brnzp|JMP|jmp|JSR|jsr|RET|ret|JSRR|jsrr|RTI|rti|TRAP|trap)\\b"
 				},
 				{
-					"name": "keyword",
+					"name": "invalid.deprecated.lc3asm",
 					"match": "\\b(GETC|getc|OUT|out|PUTS|puts|IN|in|HALT|halt)\\b"
 				},
 				{
-					"name": "keyword",
+					"name": "keyword.storage.lc3asm",
 					"match": "\\b(ST|st|STR|str|STI|sti|LEA|lea|LD|ld|LDR|ldr|LDI|ldi)\\b"
 				},
 				{
-					"name": "namespace.pseudo_op",
+					"name": "keyword.pseudoop.lc3asm",
 					"match": "\\b(ORIG|orig|FILL|fill|BLKW|blkw|STRINGZ|stringz|END|end)\\b"
 				}
 			]
 		},
 		"register":{
-			"name": "enum.register",
+			"name": "variable.register.lc3asm",
 			"match": "\\bR[0-7]|r[0-7]\\b"
 		},
 		"string":{
@@ -48,19 +48,19 @@
 		"literal":{
 			"patterns":[
 				{
-					"name": "number.hexadecimal",
+					"name": "constant.numeric.hex",
 					"match": "\\b[x][0-9a-fA-F]+\\b"
 				},
 				{
-					"name": "number.binary",
+					"name": "constant.numeric.bin",
 					"match": "\\b[b][0-1]+\\b"
 				},
 				{
-					"name": "number.decimal",
+					"name": "constant.numeric.dec",
 					"match": "\\s{1}[#][0-9]+|[#]-[0-9]+\\s{1}"
 				},
 				{
-					"name": "label",
+					"name": "label.lc3asm",
 					"match": "\\b[A-Za-z][A-Za-z0-9_]+\\b"
 				}
 			]
