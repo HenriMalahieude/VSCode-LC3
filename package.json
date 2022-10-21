@@ -3,6 +3,7 @@
   "displayName": "UCR-LC3",
   "description": "UCR's LC-3 Syntax Highlighter and Debugger",
   "version": "0.0.1",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.72.0"
   },
@@ -10,27 +11,15 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:ucr-lc3.rehighlight"
+    "*"
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "ucr-lc3.rehighlight",
-        "title": "Rehighlight"
-      }
-    ],
     "languages":[
       {
         "id": "LC3",
-        "aliases": [
-          "LC-3",
-          "LC3"
-        ],
-        "extensions": [
-          ".asm",
-          ".lc3"
-        ],
+        "aliases": ["LC-3", "LC3"],
+        "extensions": [".asm", ".lc3"],
         "configuration": "./language-configuration.json"
       }
     ],
