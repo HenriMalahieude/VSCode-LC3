@@ -1,16 +1,6 @@
 import * as vscode from 'vscode';
 import { subscribeToDiagnostics } from './diagnostics';
 
-const keywords: string[] = [
-	'ADD', 'AND', 'NOT', 
-	'BR', 'JMP', 'JSR', 'JSRR', 'RTI', 'TRAP', //Special case for BR
-	'ST', 'STR', 'STI', 'LEA', 'LD', 'LDR', 'LDI',
-];
-
-const pseudo_ops: string[] = [
-	'.ORIG', '.FILL', '.STRINGZ', '.END'
-]
-
 let diagnosticList: vscode.DiagnosticCollection;
 
 export function activate(ctx: vscode.ExtensionContext): void {
