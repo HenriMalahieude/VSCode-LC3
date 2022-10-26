@@ -59,7 +59,7 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 
 	//If starts with number
 	if (txt.substring(0,1).search("[0-9]") != -1){
-		return new vscode.Diagnostic(lineOfText.range, "Label cannot start with a number.", err);
+		return new vscode.Diagnostic(lineOfText.range, "Label cannot start with a number", err);
 	}
 	
 	//-------------------------------------------------------------------------------Op Code Special Cases
@@ -69,12 +69,12 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		if (!(parameter === "n" || parameter === "z" || parameter === "p"
 			|| parameter === "nz" || parameter === "np" || parameter === "zp" || parameter === "nzp")){
 			
-			return new vscode.Diagnostic(opcodeRange, "BR has no condition codes.", err);
+			return new vscode.Diagnostic(opcodeRange, "BR has no condition codes", err);
 		}
 	}
 
 	//-------------------------------------------------------------------------------Op Codes in General
-	let fullOperation = txt.trim().replace(",", "").split(" ");
+	let fullOperation = txt.trim().replaceAll(",", "").replaceAll(/\w+/, " ").split(" ");
 
 	//Remove any comments
 	for (let i = 0; i < fullOperation.length; i++){
@@ -86,7 +86,7 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		}
 	}
 
-	if (fullOperation[fullOperation.length-1] == ""){
+	if (fullOperation[fullOperation.length-1] == ""){ //could be on it's own
 		fullOperation.pop();
 	}
 
@@ -96,14 +96,14 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 	//Check continousness, WouLdn'T wAnT tHIs riGhT?
 	function checkContinuity(): null | vscode.Diagnostic{
 		if (op != opform && op != op.toLocaleLowerCase() && opform.substring(0, 2) != "BR"){
-			return new vscode.Diagnostic(opcodeRange, "Must be continuously upper or lower case.", err)
+			return new vscode.Diagnostic(opcodeRange, "Must be continuously upper or lower case", err)
 		}
 		return null;
 	}
 
 	function checkRegister(s:string): boolean{
 		let n = parseInt(s.substring(1, 2));
-		return s.substring(0, 1).toLocaleLowerCase() != "r" || (s.length < 2 || n === undefined || n > 7 || n < 0);
+		return s.substring(0, 1).toLocaleLowerCase() != "r" || (s.length != 2 || n == undefined || isNaN(n) || n > 7 || n < 0);
 	}
 
 	if (opform === "ADD" || opform === "AND" || opform === "NOT"){
@@ -120,7 +120,7 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		if (checkRegister(fullOperation[1])){
 			return new vscode.Diagnostic(fullLineRange, "Incorrect Destination Register", err);
 		}else if (checkRegister(fullOperation[2])){
-			return new vscode.Diagnostic(fullLineRange, "Incorrect Source Register 1", err)
+			return new vscode.Diagnostic(fullLineRange, "Incorrect Source Register #1", err)
 		}
 	}else if (opform.substring(0, 2) === "BR" || opform === "JSR"){
 		let c = checkContinuity();
@@ -133,7 +133,7 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		}
 
 		if (fullOperation[1].substring(0,1).search("[0-9]") != -1){
-			return new vscode.Diagnostic(fullLineRange, "Label cannot start with a number.", err)
+			return new vscode.Diagnostic(fullLineRange, "Label cannot start with a number", err)
 		}
 	}else if (opform === "JMP" || opform === "JSRR"){
 		let c = checkContinuity();
@@ -161,16 +161,73 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		if (checkRegister(fullOperation[1])){
 			return new vscode.Diagnostic(fullLineRange, "Incorrect Destination Register", err);
 		}
+	}else if (opform == "LDR" || opform == "STR"){
+		let c = checkContinuity();
+		if (c != null){
+			return c;
+		}
+
+		if (fullOperation.length != 4){
+			return new vscode.Diagnostic(fullLineRange, "Incomplete Statement. Format needed: \nOPC DR, BR, offset6", err);
+		}
+
+		if (checkRegister(fullOperation[1])){
+			return new vscode.Diagnostic(fullLineRange, "Incorrect Destination Register", err);
+		}
+
+		if (checkRegister(fullOperation[2])){
+			return new vscode.Diagnostic(fullLineRange, "Incorrect Base Register", err);
+		}
+	}else if (opform == "RET" || opform == "RTI"){
+		let c = checkContinuity();
+		if (c != null){
+			return c;
+		}
+
+		if (fullOperation.length != 1){
+			return new vscode.Diagnostic(fullLineRange, "Incomplete Statement. Format needed: \nOPC", err);
+		}
+	}else if (opform == "TRAP"){
+		let c = checkContinuity();
+		if (c != null){
+			return c;
+		}
+
+		if (fullOperation.length != 2){
+			return new vscode.Diagnostic(fullLineRange, "Incomplete Statement. Format needed: \nTRAP x0000", err);
+		}
+
+		let code = fullOperation[1].toLocaleLowerCase()
+		if (!code.startsWith('x') && !code.startsWith('#') && !code.startsWith("b")){
+			return new vscode.Diagnostic(fullLineRange, "Trap Vector requires a hex/numerical value", err);
+		}
 	}
 
 	//-------------------------------------------------------------------------------Pseudo Operators
-	const pseudo_op = txt.substring(0, 8).toLocaleUpperCase().split(" ")[0]; //this is wrong
-	if (pseudo_op == ".ORIG"){
+	function extractPseudoOp(para: string): string {
+		return para.substring(0, 8).toLocaleUpperCase().split(" ")[0]
+	}
 
-	}else if (pseudo_op == ".FILL" || pseudo_op == ".STRINGZ"){ //pre-compiler actions
+	if (extractPseudoOp(fullOperation[0]) == ".ORIG"){
+		if (fullOperation.length != 2){
+			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \n.ORIG x0000", err);
+		}
 
-	}else if (pseudo_op == ".END"){
-
+		let code = fullOperation[1].toLocaleLowerCase()
+		if (!code.startsWith('x') && !code.startsWith('#') && !code.startsWith("b")){
+			return new vscode.Diagnostic(fullLineRange, "Trap Vector requires a hex/numerical value", err);
+		}
+	}else if (fullOperation.length >= 2 && (extractPseudoOp(fullOperation[1]) == ".FILL" || extractPseudoOp(fullOperation[1]) == ".STRINGZ")){ //pre-compiler actions
+		if (fullOperation.length != 3){
+			console.log(fullOperation);
+			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \nlabel .PSEUDO info", err);
+		}
+	}else if (extractPseudoOp(fullOperation[0]) == ".END"){
+		if (fullOperation.length != 1){
+			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \n.END", err);
+		}
+	}else if (txt.startsWith(".")){
+		return new vscode.Diagnostic(fullLineRange, "Unrecognized Pseudo-Operator", err);
 	}
 
 	return null;
