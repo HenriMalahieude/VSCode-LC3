@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { subscribeToDiagnostics } from './diagnostics';
+import {CreateUI} from './sim';
 
 let diagnosticList: vscode.DiagnosticCollection;
 
@@ -10,6 +11,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
 	ctx.subscriptions.push(diagnosticList);
 
 	subscribeToDiagnostics(ctx, diagnosticList);
+	CreateUI(ctx);
 }
 
 // This method is called when your extension is deactivated
