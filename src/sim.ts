@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-async function importModule(moduleName: string):Promise<any>{
+/*async function importModule(moduleName: string):Promise<any>{
     console.log("importing ", moduleName);
     const importedModule = await import(moduleName);
     console.log("\timported ...");
@@ -14,7 +14,7 @@ if (process.platform == 'darwin'){
 	lc3 = await importModule('lc3interface_WIN');
 }else if (process.platform == 'linux'){
 	lc3 = await importModule('lc3interface_LIN');
-}
+}*/
 
 export function CreateUI(ctx: vscode.ExtensionContext){
 
