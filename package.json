@@ -29,7 +29,25 @@
         "scopeName": "source.asm",
         "path": "./syntaxes/lc3.tmLanguage.json"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "lc3tools",
+          "title": "LC3 Tooling",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "lc3tools":[
+        {
+          "id": "lc3-tools-view",
+          "name": "Tools",
+          "icon": "media/assemble.svg"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
