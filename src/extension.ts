@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { subscribeToDiagnostics } from './diagnostics';
-import {CreateUI} from './sim';
+import { CreateUI, AssembleCode } from './sim';
 
 let diagnosticList: vscode.DiagnosticCollection;
 
@@ -11,7 +11,9 @@ export function activate(ctx: vscode.ExtensionContext): void {
 	ctx.subscriptions.push(diagnosticList);
 
 	subscribeToDiagnostics(ctx, diagnosticList);
+	
 	CreateUI(ctx);
+	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.AssembleCode", AssembleCode));
 }
 
 // This method is called when your extension is deactivated
