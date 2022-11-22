@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { subscribeToDiagnostics } from './diagnostics';
-import { CreateUI, AssembleCode } from './sim';
+import { OpenSimulator, AssembleCode } from './sim';
 
 let diagnosticList: vscode.DiagnosticCollection;
 
@@ -12,7 +12,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
 	subscribeToDiagnostics(ctx, diagnosticList);
 	
-	CreateUI(ctx);
+	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.OpenSimulator", OpenSimulator));
 	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.AssembleCode", AssembleCode));
 }
 

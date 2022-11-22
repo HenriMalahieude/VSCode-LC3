@@ -22,30 +22,14 @@ if (process.platform == 'darwin'){ //Not a big fan of promises
 	importModule('lc3interface_LIN').then(setModule).catch(() => failedMod("Linux"));
 }
 
-export function CreateUI(ctx: vscode.ExtensionContext){
-    
-
-    vscode.window.createTreeView('lc3-tools-view', {treeDataProvider: new IconProvider()});
-    vscode.window.registerTreeDataProvider('lc3-tools-view', new IconProvider());
-}
-
 export function AssembleCode(ctx: vscode.ExtensionContext){
     //this requires the lc3interface
 
     //lc3.assemble(fileName); //TODO: Determine open file
     //opens terminal if there is an issue
+    console.log("ASSEMBLE!");
 }
 
-class IconProvider implements vscode.TreeDataProvider<vscode.TreeItem>{
-    constructor(){}
-
-    getTreeItem(element: vscode.TreeItem): vscode.TreeItem{
-        return element;
-    }
-
-    getChildren(element?: vscode.TreeItem | undefined): vscode.ProviderResult<vscode.TreeItem[]> {
-        //TODO: I need to return two icons that can be clicked
-        return;
-    }
+export function OpenSimulator(ctx: vscode.ExtensionContext){
+    console.log("OPEN!");
 }
-

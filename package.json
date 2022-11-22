@@ -34,7 +34,7 @@
       "activitybar": [
         {
           "id": "lc3tools",
-          "title": "LC3 Tooling",
+          "title": "LC3 Tools",
           "icon": "media/icon.svg"
         }
       ]
@@ -43,11 +43,17 @@
       "lc3tools":[
         {
           "id": "lc3-tools-view",
-          "name": "Tools",
+          "name": "Menu",
           "icon": "media/assemble.svg"
         }
       ]
-    }
+    },
+    "viewsWelcome":[
+      {
+        "view": "lc3-tools-view",
+        "contents": "[Assemble Code](command:ucr-lc3.AssembleCode)\n[Open Simulator](command:ucr-lc3.OpenSimulator)"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
