@@ -12,8 +12,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
 	subscribeToDiagnostics(ctx, diagnosticList);
 	
-	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.OpenSimulator", OpenSimulator));
-	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.AssembleCode", AssembleCode));
+	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.OpenSimulator", () =>{OpenSimulator(ctx)}));
+	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.AssembleCode", () =>{AssembleCode(ctx)}));
 }
 
 // This method is called when your extension is deactivated
