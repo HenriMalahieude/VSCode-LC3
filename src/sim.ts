@@ -1,5 +1,9 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
+//const requireFunc = require('util').promisify(require('require-from-string'));
+//const lc3interface = requireFunc(fs.readFileSync('lc3interface', 'utf8'));
+const lc3interface = require("..\\local_modules\\lc3interface");
 
 /*async function importModule(moduleName: string):Promise<any>{
     console.log("Importing", moduleName);

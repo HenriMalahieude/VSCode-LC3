@@ -15,15 +15,21 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "languages":[
+    "languages": [
       {
         "id": "LC3",
-        "aliases": ["LC-3", "LC3"],
-        "extensions": [".asm", ".lc3"],
+        "aliases": [
+          "LC-3",
+          "LC3"
+        ],
+        "extensions": [
+          ".asm",
+          ".lc3"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
-    "grammars" : [
+    "grammars": [
       {
         "language": "LC3",
         "scopeName": "source.asm",
@@ -40,7 +46,7 @@
       ]
     },
     "views": {
-      "lc3tools":[
+      "lc3tools": [
         {
           "id": "lc3-tools-view",
           "name": "Menu",
@@ -48,7 +54,7 @@
         }
       ]
     },
-    "viewsWelcome":[
+    "viewsWelcome": [
       {
         "view": "lc3-tools-view",
         "contents": "[Assemble Code](command:ucr-lc3.AssembleCode)\n[Open Simulator](command:ucr-lc3.OpenSimulator)"
@@ -64,16 +70,19 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.72.0",
     "@types/glob": "^8.0.0",
     "@types/mocha": "^10.0.0",
     "@types/node": "16.x",
+    "@types/vscode": "^1.72.0",
     "@typescript-eslint/eslint-plugin": "^5.38.1",
     "@typescript-eslint/parser": "^5.38.1",
+    "@vscode/test-electron": "^2.1.5",
     "eslint": "^8.24.0",
     "glob": "^8.0.3",
     "mocha": "^10.0.0",
-    "typescript": "^4.8.4",
-    "@vscode/test-electron": "^2.1.5"
+    "typescript": "^4.8.4"
+  },
+  "dependencies": {
+    "require-from-string": "^2.0.2"
   }
 }
