@@ -6,7 +6,7 @@ import { ChildProcessWithoutNullStreams, exec, Serializable, spawn } from 'child
 //const lc3interface = require("..\\local_modules\\lc3interface");
 
 //TODO: Get separate things for windows, linux, and mac
-let executableFolder = "/src/lc3tools_WIN"; //default
+let executableFolder = "\\src\\lc3tools_WIN"; //default
 let output: vscode.OutputChannel = vscode.window.createOutputChannel("LC3-Tools");
 
 let proc: ChildProcessWithoutNullStreams | undefined = undefined;
@@ -15,13 +15,13 @@ let sim_webview: vscode.WebviewPanel | undefined = undefined;
 //Note: I wish there was a better way to detect operating system. Like detecting Chipset instead.
 if (process.platform == 'darwin'){
     //TODO: MAC Version
-    executableFolder = "/src/lc3tools_MAC";
+    executableFolder = "\\src\\lc3tools_MAC";
 }else if (process.platform == 'linux'){
 	//TODO: Linux Version
-    executableFolder = "/src/lc3tools_LIN";
+    executableFolder = "\\src\\lc3tools_LIN";
 }
 
-function escapeSpaces(entry : string): string {
+/*function escapeSpaces(entry : string): string {
     let thing : string = ""
     
     let location : number = entry.indexOf(" ");
@@ -35,7 +35,7 @@ function escapeSpaces(entry : string): string {
     
 
     return thing + entry
-}
+}*/
 
 function summonSimWebview(ctx: vscode.ExtensionContext){
     let simViewHTML = fs.readFileSync(ctx.extensionUri.path + "/src/simview.html");
@@ -54,8 +54,8 @@ export function AssembleCode(ctx: vscode.ExtensionContext){
     output.clear();
     output.show();
 
-    let openedWindow = vscode.window.activeTextEditor?.document.uri.path;
-    let extensionLocation: any = escapeSpaces(ctx.extensionUri.path);
+    let openedWindow = vscode.window.activeTextEditor?.document.uri.fsPath;
+    let extensionLocation: any = ctx.extensionUri.fsPath;
 
     if (openedWindow == undefined || extensionLocation == undefined){
         console.log("No file opened?");
@@ -68,11 +68,14 @@ export function AssembleCode(ctx: vscode.ExtensionContext){
     }
 
     //let entireCommend = extensionLocation + executableFolder + " --print-level=5 " + openedWindow;
-    let command  = extensionLocation + escapeSpaces(executableFolder) + "/assembler.exe --print-level=5 " + escapeSpaces(openedWindow);
+    let command  = extensionLocation + executableFolder + "\\assembler.exe --print-level=5 " + openedWindow;
     exec(command, (error, stdout, stderr) => {
         if (error){
             console.log(`error: ${error.message}`);
             output.append(error.message);
+            if (process.platform == "win32"){
+                output.append("\nAssembler having issues finding the file? \nIt may be due spaces in a folder name. Please remove them before continuing.");
+            }
             return;
         }
 
@@ -90,15 +93,15 @@ export function AssembleCode(ctx: vscode.ExtensionContext){
 export function OpenSimulator(ctx: vscode.ExtensionContext){
     output.clear();
 
-    let openedWindow: string | undefined = vscode.window.activeTextEditor?.document.uri.path;
-    let extensionLocation: any = escapeSpaces(ctx.extensionUri.path);
+    let openedWindow: string | undefined = vscode.window.activeTextEditor?.document.uri.fsPath;
+    let extensionLocation: any = ctx.extensionUri.fsPath;
 
     if (openedWindow == undefined || extensionLocation == undefined){ //nothing is selected
         console.log("No file opened?");
         output.append("No file is opened?");
         output.show();
         return;
-    }else if (openedWindow.indexOf("/") < 0){ //we don't have an active editor selected
+    }else if (openedWindow.indexOf("\\") < 0){ //we don't have an active editor selected
         console.log(openedWindow);
         output.append("Please open or click on the file/editor you would like to simulate.");
         output.show();
@@ -110,13 +113,11 @@ export function OpenSimulator(ctx: vscode.ExtensionContext){
         return;
     }
 
-    openedWindow = escapeSpaces(openedWindow);
-
-    let fileName = openedWindow?.slice(openedWindow?.lastIndexOf("/")+1, openedWindow?.lastIndexOf("."));
-    let objFile: any = openedWindow?.slice(0, openedWindow.lastIndexOf("/")) + "/" + fileName + ".obj";
+    let fileName = openedWindow?.slice(openedWindow?.lastIndexOf("\\")+1, openedWindow?.lastIndexOf("."));
+    let objFile: any = openedWindow?.slice(0, openedWindow.lastIndexOf("\\")) + "\\" + fileName + ".obj";
 
     //let entireCommend = extensionLocation + executableFolder + " --print-level=5 " + openedWindow;
-    let command = extensionLocation + escapeSpaces(executableFolder) + "/simulator.exe --log=sim.txt --print-level=8 " + objFile;
+    let command = extensionLocation + executableFolder + "\\simulator.exe --log=sim.txt --print-level=8 " + objFile;
     console.log(command);
     
     summonSimWebview(ctx);
