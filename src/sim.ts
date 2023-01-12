@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { ChildProcessWithoutNullStreams, exec, Serializable, spawn } from 'child_process';
+import { getSimulatorHtml } from './simulator_html';
 
 //Issue: This needs to be recompiled into a newer version of node, or this project needs to use an older version of node
 //const lc3interface = require("..\\local_modules\\lc3interface");
@@ -38,7 +39,8 @@ if (process.platform == 'darwin'){
 }*/
 
 function summonSimWebview(ctx: vscode.ExtensionContext){
-    let simViewHTML = fs.readFileSync(ctx.extensionUri.path + "/src/simview.html");
+    let simViewHTML = getSimulatorHtml();
+
     sim_webview = vscode.window.createWebviewPanel(
         "sim",
         "LC3-Tools Integrated Simulator",
@@ -46,7 +48,8 @@ function summonSimWebview(ctx: vscode.ExtensionContext){
         {}
     );
 
-    sim_webview.webview.html = simViewHTML.toString();
+    sim_webview.webview.html = simViewHTML;
+
     sim_webview.reveal(vscode.ViewColumn.One, false);
 }
 
@@ -73,9 +76,7 @@ export function AssembleCode(ctx: vscode.ExtensionContext){
         if (error){
             console.log(`error: ${error.message}`);
             output.append(error.message);
-            if (process.platform == "win32"){
-                output.append("\nAssembler having issues finding the file? \nIt may be due spaces in a folder name. Please remove them before continuing.");
-            }
+            output.append("\nAssembler having issues finding the file? \nIt may be due spaces in a folder name. Please remove them before continuing.");
             return;
         }
 
@@ -93,7 +94,7 @@ export function AssembleCode(ctx: vscode.ExtensionContext){
 export function OpenSimulator(ctx: vscode.ExtensionContext){
     output.clear();
 
-    let openedWindow: string | undefined = vscode.window.activeTextEditor?.document.uri.fsPath;
+    /*let openedWindow: string | undefined = vscode.window.activeTextEditor?.document.uri.fsPath;
     let extensionLocation: any = ctx.extensionUri.fsPath;
 
     if (openedWindow == undefined || extensionLocation == undefined){ //nothing is selected
@@ -118,11 +119,11 @@ export function OpenSimulator(ctx: vscode.ExtensionContext){
 
     //let entireCommend = extensionLocation + executableFolder + " --print-level=5 " + openedWindow;
     let command = extensionLocation + executableFolder + "\\simulator.exe --log=sim.txt --print-level=8 " + objFile;
-    console.log(command);
+    console.log(command);*/
     
     summonSimWebview(ctx);
 
-    if (!proc){
+    /*if (!proc){
         proc = spawn(command);
 
         proc.addListener("message", (message: Serializable, sendHandle) => {
@@ -143,7 +144,7 @@ export function OpenSimulator(ctx: vscode.ExtensionContext){
         proc.addListener("error", (err: Error) => {
             output.append("Simulator error: " + err.message);
         })
-    }
+    }*/
 }
 
 export function CloseSimulator(ctx : vscode.ExtensionContext){
