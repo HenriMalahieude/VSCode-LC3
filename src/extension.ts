@@ -15,6 +15,13 @@ export function activate(ctx: vscode.ExtensionContext): void {
 	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.OpenSimulator", () =>{OpenSimulator(ctx)}));
 	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.AssembleCode", () =>{AssembleCode(ctx)}));
 	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.CloseSimulator", () => {CloseSimulator(ctx)}));
+
+	vscode.commands.registerCommand('ucr-lc3.debug.getProgramName', config => {
+		return vscode.window.showInputBox({
+		  placeHolder: 'Please enter the name of an object file in the workspace folder',
+		  value: 'Program.obj'
+		});
+	  });
 }
 
 // This method is called when your extension is deactivated
