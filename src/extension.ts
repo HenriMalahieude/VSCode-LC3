@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { subscribeToDiagnostics } from './diagnostics';
-import { OpenSimulator, AssembleCode, CloseSimulator } from './sim';
 
 let diagnosticList: vscode.DiagnosticCollection;
 
@@ -12,9 +11,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
 	subscribeToDiagnostics(ctx, diagnosticList);
 	
-	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.OpenSimulator", () =>{OpenSimulator(ctx)}));
-	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.AssembleCode", () =>{AssembleCode(ctx)}));
-	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.CloseSimulator", () => {CloseSimulator(ctx)}));
+	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.OpenSimulator", () =>{console.log("Bruh")}));
 
 	vscode.commands.registerCommand('ucr-lc3.debug.getProgramName', config => {
 		return vscode.window.showInputBox({
@@ -26,5 +23,5 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
 // This method is called when your extension is deactivated
 export function deactivate(ctx: vscode.ExtensionContext): void {
-	CloseSimulator(ctx);
+	
 }

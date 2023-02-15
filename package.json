@@ -101,7 +101,7 @@
     "viewsWelcome": [
       {
         "view": "lc3-tools-view",
-        "contents": "[Assemble Code](command:ucr-lc3.AssembleCode)\n[Open Simulator](command:ucr-lc3.OpenSimulator)"
+        "contents": "[Simulate](command:ucr-lc3.AssembleCode)"
       }
     ]
   },
