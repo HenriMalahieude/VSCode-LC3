@@ -1,13 +1,15 @@
-import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { ChildProcessWithoutNullStreams, exec, Serializable, spawn } from 'child_process';
-import { getSimulatorHtml } from './simulator_html';
+import * as path from 'path';
+
+const escape_spaces_mod = require('escape-path-with-spaces')
 
 //Issue: This needs to be recompiled into a newer version of node, or this project needs to use an older version of node
-//const lc3interface = require("..\\local_modules\\lc3interface");
+console.log(process.version) //v16.14.2
+const lc3interface = require("..\\local_modules\\win32\\lc3interface"); //Yet when I compile for 16.14.2 I get Node_module_version 93 instead of 106
 
 //TODO: Get separate things for windows, linux, and mac
-let executableFolder = "\\src\\lc3tools_WIN"; //default
+let executableFolder = "../lc3tools_WIN"; //default of windows
 let output: vscode.OutputChannel = vscode.window.createOutputChannel("LC3-Tools");
 
 let proc: ChildProcessWithoutNullStreams | undefined = undefined;
@@ -16,30 +18,25 @@ let sim_webview: vscode.WebviewPanel | undefined = undefined;
 //Note: I wish there was a better way to detect operating system. Like detecting Chipset instead.
 if (process.platform == 'darwin'){
     //TODO: MAC Version
-    executableFolder = "\\src\\lc3tools_MAC";
+    executableFolder = "../lc3tools_MAC";
 }else if (process.platform == 'linux'){
 	//TODO: Linux Version
-    executableFolder = "\\src\\lc3tools_LIN";
+    executableFolder = "../lc3tools_LIN";
 }
 
-/*function escapeSpaces(entry : string): string {
-    let thing : string = ""
-    
-    let location : number = entry.indexOf(" ");
-
-    while (location > 0){
-        thing += entry.substring(0, location) + "\\ ";
-        
-        entry = entry.substring(location+1);
-        location = entry.indexOf(" ");
+//Note: This may break for other systems than windows
+function escapeSpaces(input: string) : string {
+    if (process.platform == "win32"){
+        //console.log(escape_spaces_mod(input));
+        //input = input.replaceAll(/((\w+)(\s+))+(\w+)/g, "\"${0}\"");
+        //return input;
     }
-    
 
-    return thing + entry
-}*/
+    return input.replaceAll(/(\s+)/g, "%20");
+}
 
 function summonSimWebview(ctx: vscode.ExtensionContext){
-    let simViewHTML = getSimulatorHtml();
+    let simViewHTML = "";
 
     sim_webview = vscode.window.createWebviewPanel(
         "sim",
@@ -70,19 +67,31 @@ export function AssembleCode(ctx: vscode.ExtensionContext){
         return;
     }
 
+    //openedWindow = escapeSpaces(openedWindow);
+
     //let entireCommend = extensionLocation + executableFolder + " --print-level=5 " + openedWindow;
-    let command  = extensionLocation + executableFolder + "\\assembler.exe --print-level=5 " + openedWindow;
+    let pathed = path.format({
+        dir: extensionLocation + executableFolder,
+        base: 'assembler.exe'
+    })
+    //let localePath = path.relative(extensionLocation, executableFolder);
+
+    let command: string = pathed + " --print-level=5 " + openedWindow;
+
+    console.log(command);
+
     exec(command, (error, stdout, stderr) => {
         if (error){
             console.log(`error: ${error.message}`);
             output.append(error.message);
-            output.append("\nAssembler having issues finding the file? \nIt may be due spaces in a folder name. Please remove them before continuing.");
+            output.append("\nSystem having issues finding the file? \nIt may be due spaces in a folder name. Please remove them before continuing.");
             return;
         }
 
         if (stderr){
             console.log(`stderr: ${stderr}`);
             output.append(stderr);
+            output.append("\nAssembler having issues finding the file? \nIt may be due spaces in a folder name. Please remove them before continuing.");
             return;
         }
 
@@ -94,7 +103,7 @@ export function AssembleCode(ctx: vscode.ExtensionContext){
 export function OpenSimulator(ctx: vscode.ExtensionContext){
     output.clear();
 
-    /*let openedWindow: string | undefined = vscode.window.activeTextEditor?.document.uri.fsPath;
+    let openedWindow: string | undefined = vscode.window.activeTextEditor?.document.uri.fsPath;
     let extensionLocation: any = ctx.extensionUri.fsPath;
 
     if (openedWindow == undefined || extensionLocation == undefined){ //nothing is selected
@@ -114,16 +123,16 @@ export function OpenSimulator(ctx: vscode.ExtensionContext){
         return;
     }
 
-    let fileName = openedWindow?.slice(openedWindow?.lastIndexOf("\\")+1, openedWindow?.lastIndexOf("."));
+    let fileName: string = path.basename(openedWindow);
     let objFile: any = openedWindow?.slice(0, openedWindow.lastIndexOf("\\")) + "\\" + fileName + ".obj";
 
     //let entireCommend = extensionLocation + executableFolder + " --print-level=5 " + openedWindow;
-    let command = extensionLocation + executableFolder + "\\simulator.exe --log=sim.txt --print-level=8 " + objFile;
-    console.log(command);*/
+    let command = extensionLocation + executableFolder + "\\simulator.exe --print-level=8 " + objFile;
+    console.log(command);
     
-    summonSimWebview(ctx);
+    //summonSimWebview(ctx);
 
-    /*if (!proc){
+    if (!proc){
         proc = spawn(command);
 
         proc.addListener("message", (message: Serializable, sendHandle) => {
@@ -144,7 +153,7 @@ export function OpenSimulator(ctx: vscode.ExtensionContext){
         proc.addListener("error", (err: Error) => {
             output.append("Simulator error: " + err.message);
         })
-    }*/
+    }
 }
 
 export function CloseSimulator(ctx : vscode.ExtensionContext){
