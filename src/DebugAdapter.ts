@@ -1,59 +1,52 @@
+//Refer to: https://github.com/microsoft/vscode-mock-debug
+
+import * as vscode from 'vscode';
 import * as DAP from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol/lib/debugProtocol";
+import { LC3Simulator, Result } from "./Simulator";
+import path from 'path';
+import { Message } from '@vscode/debugadapter/lib/messages';
 
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 	/** An absolute path to the "program" to debug. */
 	program: string;
 	/** Automatically stop target after launch. If not specified, target does not stop. */
 	stopOnEntry?: boolean;
-	/** enable logging the Debug Adapter Protocol */
-	trace?: boolean;
-	/** run without debugging */
-	noDebug?: boolean;
-	/** if specified, results in a simulated compile error in launch. */
-	compileError?: 'default' | 'show' | 'hide';
 }
 
 interface IAttachRequestArguments extends ILaunchRequestArguments { }
 
-class lc3debugadapter extends DAP.DebugSession{
+export class lc3debugadapter extends DAP.LoggingDebugSession{
 	private static threadID = 1;
 
-	private _debugger = require("../local_modules/lc3interface.node");
+	private _debugger: LC3Simulator | undefined;
+	private outputChannel: vscode.OutputChannel; //NOTE: I hope this is a reference variable.
 
-	private _variableHandles = new DAP.Handles<'locals' | 'globals'>();
-
-	private _cancellationTokens = new Map<number, boolean>();
-
-	private _progressId = 10000;
-	private _cancelledProgressId: string | undefined = undefined;
-	private _isProgressCancellable = true;
-
-	private _valuesInHex = false;
-	private _useInvalidatedEvent = false;
-
-	constructor(){
+	constructor(ctx: vscode.ExtensionContext, otc: vscode.OutputChannel){
 		super();
-		
+
+		this.outputChannel = otc;
 	}
 
 	protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
 		//Notify front-end of capabilities of this debugger
 		response.body = response.body || {};
 
-		response.body.supportsConfigurationDoneRequest = false;
-		
+		//response.body.supportsConfigurationDoneRequest = false;
+
+		//NOTE: Later we can implement "step back" functionality
 
 		this.sendResponse(response);
 
 		// since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
 		// we request them early by sending an 'initializeRequest' to the frontend.
 		// The frontend will end the configuration sequence by calling 'configurationDone' request.
-		this.sendEvent(new DAP.InitializedEvent());
+		//this.sendEvent(new DAP.InitializedEvent());
 	}
 
 	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request): void {
 		console.log(`disconnectRequest suspend: ${args.suspendDebuggee}, terminate: ${args.terminateDebuggee}`);
+		this._debugger = undefined;
 	}
 
 	protected async attachRequest(response: DebugProtocol.AttachResponse, args: IAttachRequestArguments) {
@@ -62,20 +55,21 @@ class lc3debugadapter extends DAP.DebugSession{
 
 	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
 		// Run the debugger
-		//await this._runtime.start(args.program, !!args.stopOnEntry, !args.noDebug);
+		let f: vscode.Uri[] = await vscode.workspace.findFiles(args.program);
+	
+		if (f.length > 0){
+			let td: vscode.TextDocument = await vscode.workspace.openTextDocument(f[0]);
 
-		if (args.compileError) {
-			// simulate a compile/build error in "launch" request:
-			// the error should not result in a modal dialog since 'showUser' is set to false.
-			// A missing 'showUser' should result in a modal dialog.
+			this._debugger = new LC3Simulator(td);
+		} else {
 			this.sendErrorResponse(response, {
 				id: 1001,
-				format: `compile error: some fake error.`,
-				showUser: args.compileError === 'show' ? true : (args.compileError === 'hide' ? false : undefined)
+				format: "Could not read from file provided",
+				showUser: true
 			});
-		} else {
-			this.sendResponse(response);
 		}
+		
+		this.sendResponse(response);
 	}
 
 	protected async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): Promise<void> {
@@ -127,13 +121,14 @@ class lc3debugadapter extends DAP.DebugSession{
 		response.body = {
 			threads: [
 				new DAP.Thread(lc3debugadapter.threadID, "thread 1"),
-				new DAP.Thread(lc3debugadapter.threadID + 1, "thread 2"),
 			]
 		};
 		this.sendResponse(response);
 	}
 
 	protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request): Promise<void> {
+		
+		
 		/*
 		let vs: RuntimeVariable[] = [];
 
@@ -159,31 +154,47 @@ class lc3debugadapter extends DAP.DebugSession{
 	}
 
 	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
-		//this._runtime.continue(false);
+		if (this._debugger){
+			let info: Result = this._debugger.run();
+			if (info.success = false){
+				//TODO: Edit Response;
+			}
+		}
 		this.sendResponse(response);
 	}
 
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
-		//this._runtime.step(args.granularity === 'instruction', false);
+		if (this._debugger){
+			let info: Result = this._debugger.stepOver(true);
+			if (info.success = false){
+				//TODO: Edit Response;
+			}
+		}
 		this.sendResponse(response);
 	}
 
 	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
-		//this._runtime.stepIn(args.targetId);
+		if (this._debugger){
+			let info: Result = this._debugger.stepIn(true);
+			if (info.success = false){
+				//TODO: Edit Response;
+			}
+		}
 		this.sendResponse(response);
 	}
 
-	protected cancelRequest(response: DebugProtocol.CancelResponse, args: DebugProtocol.CancelArguments) {
-		if (args.requestId) {
-			this._cancellationTokens.set(args.requestId, true);
+	protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments, request?: DebugProtocol.Request | undefined): void {
+		if (this._debugger){
+			let info: Result = this._debugger.stepOut(true);
+			if (info.success = false){
+				//TODO: Edit Response;
+			}
 		}
-		if (args.progressId) {
-			this._cancelledProgressId= args.progressId;
-		}
+		this.sendResponse(response);
 	}
 
 	protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
-		if (command === 'toggleFormatting') {
+		/*if (command === 'toggleFormatting') {
 			this._valuesInHex = ! this._valuesInHex;
 			if (this._useInvalidatedEvent) {
 				this.sendEvent(new DAP.InvalidatedEvent( ['variables'] ));
@@ -191,6 +202,32 @@ class lc3debugadapter extends DAP.DebugSession{
 			this.sendResponse(response);
 		} else {
 			super.customRequest(command, response, args);
-		}
+		}*/
 	}
+
+	/*public chooseFile(){
+		let filePath: string | undefined;
+		let root = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0] : undefined;
+		
+		if (root){
+			let standard: string | undefined = undefined;
+			if (vscode.window.activeTextEditor){
+				standard = path.relative(root.uri.fsPath, vscode.window.activeTextEditor.document.uri.fsPath);
+			}
+			
+			vscode.window.showInputBox({
+				placeHolder: "File in " + root.name + " folder",
+				prompt: "File Path from "+ root.name +" to Simulate (ex: './file.asm')",
+				value: standard
+			}).then((receive: string | undefined) => {
+				filePath = receive ? receive : standard;
+				
+				if (filePath){
+					vscode.workspace.findFiles(filePath).then((docs: vscode.Uri[]) => {
+
+					});	
+				}
+			})
+		}
+	}*/
 }
