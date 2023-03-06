@@ -1,135 +1,113 @@
 {
-  "name": "ucr-lc3",
-  "displayName": "UCR-LC3",
-  "description": "UCR's LC-3 Syntax Highlighter and Debugger",
-  "version": "0.0.1",
-  "license": "MIT",
-  "engines": {
-    "vscode": "^1.72.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "*"
-  ],
-  "main": "./out/extension.js",
-  "contributes": {
-    "breakpoints": [
-      {
-        "language": "LC3"
-      }
-    ],
-    "languages": [
-      {
-        "id": "LC3",
-        "aliases": [
-          "LC-3",
-          "LC3"
-        ],
-        "extensions": [
-          ".asm",
-          ".lc3"
-        ],
-        "configuration": "./language-configuration.json"
-      }
-    ],
-    "debuggers": [
-      {
-        "type": "lc3",
-        "label": "LC3 Simulator",
-        "program": "./out/DebugAdapter.js",
-        "runtime": "node",
-        "configurationAttributes": {
-          "launch": {
-            "required": [
-              "program"
-            ],
-            "properties": {
-              "program": {
-                "type": "string",
-                "description": "Absolute path to a text file.",
-                "default": "${workspaceFolder}/${command:AskForProgramName}"
-              },
-              "stopOnEntry": {
-                "type": "boolean",
-                "description": "Automatically stop after launch.",
-                "default": true
-              }
-            }
-          }
-        },
-        "initialConfigurations": [
-          {
-            "type": "mock",
-            "request": "launch",
-            "name": "Ask for file name",
-            "program": "${workspaceFolder}/${command:AskForProgramName}",
-            "stopOnEntry": true
-          }
-        ],
-        "variables": {
-          "AskForProgramName": "ucr-lc3.debug.getProgramName"
-        }
-      }
-    ],
-    "grammars": [
-      {
-        "language": "LC3",
-        "scopeName": "source.asm",
-        "path": "./syntaxes/lc3.tmLanguage.json"
-      }
-    ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "lc3tools",
-          "title": "LC3 Tools",
-          "icon": "media/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "lc3tools": [
-        {
-          "id": "lc3-tools-view",
-          "name": "Menu",
-          "icon": "media/assemble.svg"
-        }
-      ]
-    },
-    "viewsWelcome": [
-      {
-        "view": "lc3-tools-view",
-        "contents": "[Simulate](command:ucr-lc3.AssembleCode)"
-      }
-    ]
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
-  },
-  "devDependencies": {
-    "@types/glob": "^8.0.0",
-    "@types/mocha": "^10.0.0",
-    "@types/node": "^16.18.11",
-    "@types/vscode": "^1.72.0",
-    "@typescript-eslint/eslint-plugin": "^5.38.1",
-    "@typescript-eslint/parser": "^5.38.1",
-    "@vscode/test-electron": "^2.1.5",
-    "eslint": "^8.24.0",
-    "glob": "^8.0.3",
-    "mocha": "^10.0.0",
-    "typescript": "^4.8.4"
-  },
-  "dependencies": {
-    "@vscode/debugadapter": "^1.59.0",
-    "escape-path-with-spaces": "^1.0.2",
-    "require-from-string": "^2.0.2",
-    "vscode": "^1.1.34"
-  }
+	"name": "ucr-lc3",
+	"displayName": "UCR-LC3",
+	"description": "UCR's LC-3 Syntax Highlighter and Debugger",
+	"version": "0.0.1",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.72.0"
+	},
+	"categories": [
+		"Debuggers",
+		"Programming Languages"
+	],
+	"activationEvents": [
+		"*"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"languages": [
+			{
+				"id": "LC3",
+				"aliases": [
+					"LC-3",
+					"lc3"
+				],
+				"extensions": [
+					".asm",
+					".lc3"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"menus": {
+			"editor/content/run": [
+				{
+					"command": "ucr-lc3.lc3sim.runEditorContents",
+					"when": "resourceLangId == LC3",
+					"group": "navigation@1"
+				},
+				{
+					"command": "ucr-lc3.lc3sim.debugEditorContents",
+					"when": "resourceLangId == LC3",
+					"group": "navigation@2"
+				}
+			]
+		},
+		"breakpoints": [{"language": "LC3"}],
+		"debuggers": [
+			{
+				"type": "lc3",
+				"label": "LC3 Simulator",
+				"program": "./out/DebugAdapter.js",
+				"runtime": "node",
+				"configurationAttributes": {
+					"launch": {
+						"required": ["program"],
+						"properties": {
+							"program": {
+								"type": "string",
+								"description": "Absolute path to a text file",
+								"default": "${workspaceFolder}/${command:AskForProgramName}"
+							}
+						}
+					}
+				},
+				"initialConfigurations": [
+					{
+						"type": "lc3",
+						"request": "launch",
+						"name": "Ask for program location",
+						"program": "${workspaceFolder}/${command:AskForProgramName}"
+					}
+				],
+				"variables": {
+					"AskForProgramName": "ucr-lc3.debug.getProgramName"
+				}
+			}
+		],
+		"grammars": [
+			{
+				"language": "LC3",
+				"scopeName": "source.asm",
+				"path": "./syntaxes/lc3.tmLanguage.json"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"pretest": "npm run compile && npm run lint",
+		"lint": "eslint src --ext ts",
+		"test": "node ./out/test/runTest.js"
+	},
+	"devDependencies": {
+		"@types/glob": "^8.0.0",
+		"@types/mocha": "^10.0.0",
+		"@types/node": "^16.18.11",
+		"@types/vscode": "^1.76.0",
+		"@typescript-eslint/eslint-plugin": "^5.38.1",
+		"@typescript-eslint/parser": "^5.38.1",
+		"@vscode/test-electron": "^2.1.5",
+		"eslint": "^8.24.0",
+		"glob": "^8.0.3",
+		"mocha": "^10.0.0",
+		"typescript": "^4.8.4"
+	},
+	"dependencies": {
+		"@vscode/debugadapter": "^1.59.0",
+		"escape-path-with-spaces": "^1.0.2",
+		"require-from-string": "^2.0.2"
+	}
 }

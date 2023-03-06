@@ -1,24 +1,18 @@
 import * as vscode from 'vscode';
+import { activateDebugging } from './ActivateDebugger';
 import { subscribeToDiagnostics } from './diagnostics';
 
 let diagnosticList: vscode.DiagnosticCollection;
+let output: vscode.OutputChannel = vscode.window.createOutputChannel("LC3-Tools");
 
 export function activate(ctx: vscode.ExtensionContext): void {
 	console.log('UCR\'s LC-3 Extension is now running');
 
 	diagnosticList = vscode.languages.createDiagnosticCollection('lc3');
 	ctx.subscriptions.push(diagnosticList);
-
 	subscribeToDiagnostics(ctx, diagnosticList);
-	
-	ctx.subscriptions.push(vscode.commands.registerCommand("ucr-lc3.OpenSimulator", () =>{console.log("Bruh")}));
 
-	vscode.commands.registerCommand('ucr-lc3.debug.getProgramName', config => {
-		return vscode.window.showInputBox({
-		  placeHolder: 'Please enter the name of an object file in the workspace folder',
-		  value: 'Program.obj'
-		});
-	  });
+	activateDebugging(ctx, output);
 }
 
 // This method is called when your extension is deactivated
