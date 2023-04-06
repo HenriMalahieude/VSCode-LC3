@@ -15,6 +15,7 @@
 		"*"
 	],
 	"main": "./out/extension.js",
+	"browser": "./out/extension.js",
 	"contributes": {
 		"languages": [
 			{
@@ -30,24 +31,10 @@
 				"configuration": "./language-configuration.json"
 			}
 		],
-		"menus": {
-			"editor/content/run": [
-				{
-					"command": "ucr-lc3.lc3sim.runEditorContents",
-					"when": "resourceLangId == LC3",
-					"group": "navigation@1"
-				},
-				{
-					"command": "ucr-lc3.lc3sim.debugEditorContents",
-					"when": "resourceLangId == LC3",
-					"group": "navigation@2"
-				}
-			]
-		},
 		"breakpoints": [{"language": "LC3"}],
 		"debuggers": [
 			{
-				"type": "lc3",
+				"type": "lcsim",
 				"label": "LC3 Simulator",
 				"program": "./out/DebugAdapter.js",
 				"runtime": "node",
@@ -65,9 +52,9 @@
 				},
 				"initialConfigurations": [
 					{
-						"type": "lc3",
+						"type": "lcsim",
 						"request": "launch",
-						"name": "Ask for program location",
+						"name": "LC3 Simulator",
 						"program": "${workspaceFolder}/${command:AskForProgramName}"
 					}
 				],

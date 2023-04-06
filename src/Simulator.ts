@@ -1,3 +1,4 @@
+import { EventEmitter } from 'stream';
 import * as vscode from 'vscode'
 
 export interface Result{
@@ -19,7 +20,7 @@ const emptyLC3Data: LC3Data = {
 	machine: 0b0000000000000000
 }
 
-export class LC3Simulator {
+export class LC3Simulator extends EventEmitter{
 	status: Result = {success: true};
 	halted: boolean = false;
 
@@ -29,8 +30,8 @@ export class LC3Simulator {
 	psr: number = 0;
 	mcr: number = 0;
 
-	private file: vscode.TextDocument;
-	private currentLine: number = 0;
+	public file: vscode.TextDocument;
+	private currentLine: number = -1;
 
 	//Map .ORIGIN x#### locations to file line numbers
 	private subroutineLocations: Map<number, number>;
@@ -39,6 +40,7 @@ export class LC3Simulator {
 	private labelLocations: Map<number, number>;
 
 	constructor(f: vscode.TextDocument){
+		super();
 		//Initialize the machine
 		this.memory = new Map<number, LC3Data>(); //Potentially get a file to pre-load system memory into here
 
@@ -47,22 +49,37 @@ export class LC3Simulator {
 		this.subroutineLocations = new Map<number, number>();
 		this.labelLocations = new Map<number, number>();
 
+		console.log("Opened and simulating: " + this.file.fileName)
 		//this.preprocess() //TODO: Pre-processing so that we can map file locations with .origin commands
 	}
 
 	//-----------------------Public Functions for Simulator Control-----------------------
 
+	public getCurrentLine(): number{
+		return this.currentLine;
+	}
+
+	public getCurrentInstruction(offset:number = 0): string{
+		let lineString = this.file.lineAt(this.currentLine + offset);
+
+		return lineString.text;
+	}
+
 	public stepOver(forward: boolean): Result{
-		if (!this.status.success || this.halted) return this.status;
+		console.log("Asked To Step Over Line " + this.currentLine);
+		if (!this.status.success || this.halted) {return this.status;}
+
 		if (this.file.lineCount < this.currentLine) {
 			this.status = {success: true, context: "Complete", message: "Complete", line: this.file.lineCount}
 			this.halted = true;
 			return this.status;
 		}
 
-		let succ = this.interpretCommand(this.file.lineAt(this.currentLine++).text);
+		this.currentLine += 1;
+
+		let succ = this.interpretCommand(this.file.lineAt(this.currentLine).text);
 		if (!succ.success){
-			succ.line = this.currentLine;
+			succ.line = this.currentLine+1; //translating from 0-index to 1-index
 			succ.context = "Runtime"
 			this.status = succ;
 			this.halted = true;
@@ -72,7 +89,8 @@ export class LC3Simulator {
 	}
 
 	public stepIn(forward: boolean): Result{
-		if (!this.status.success || this.halted) return this.status;
+		console.log("Asked to Step In!")
+		if (!this.status.success || this.halted) {return this.status;}
 
 		//Detect if that command sends the program elsewhere
 
@@ -80,7 +98,8 @@ export class LC3Simulator {
 	}
 
 	public stepOut(forward: boolean): Result{
-		if (!this.status.success || this.halted) return this.status;
+		console.log("Asked to Step Out!")
+		if (!this.status.success || this.halted) {return this.status;}
 
 		//Detect if this command is part of a subroutine
 
@@ -88,7 +107,8 @@ export class LC3Simulator {
 	}
 
 	public run(): Result{
-		if (!this.status.success || this.halted) return this.status;
+		console.log("Asked to Run!")
+		if (!this.status.success || this.halted) {return this.status;}
 
 		//For Loop until HALT or end of program lines or max loop reached
 
@@ -150,9 +170,18 @@ export class LC3Simulator {
 		}
 
 		//Macros
-		if (manip.match(/HALT\s*/gm)){
+		if (manip.match(/\s*HALT\s*/gm)){
+			console.log('Halting program')
 			this.halted = true;
-			return {success: true}
+			return {success: true};
+		}else if (manip.match(/\s*PUTC\s*/gm)){
+			//TODO: Initiate PUTC with event
+
+			return {success: true};
+		}else if (manip.match(/\s*GETC\s*/gm)){
+			//TODOL Intiate GETC with event
+
+			return {success: true};
 		}
 
 		//Real Opcodes
@@ -161,6 +190,8 @@ export class LC3Simulator {
 			return this.LD(manip);
 		}else if (manip.startsWith("ADD ")){
 			return this.ADD(manip);
+		}else if (manip.startsWith("NOT ")){
+			return this.NOT(manip);
 		}
 
 		return {success: false, message: "Couldn't understand line. Is that a valid OPCode?"};
@@ -172,17 +203,35 @@ export class LC3Simulator {
 		let command  = line.split(" ");
 		let destinationS = command[1].substring(1, 2);
 		let sourceS = command[2].substring(1, 2);
-		let numerical = this.convertNumber(command[3]);
+		let numerical
+
+		if (!command[3].startsWith("R")){
+			numerical = this.convertNumber(command[3]);
+		}else{
+			numerical = Number(command[3].substring(1,2));
+			if (Number.isNaN(numerical) || numerical < 0 || numerical > 7){
+				return {success: false, message: "Second Source Register is NaN or out of bounds."};
+			}
+
+			numerical = this.registers[numerical];
+		}
 
 		let destIndex = Number(destinationS);
 		let sourIndex = Number(sourceS);
 
-		if (Number.isNaN(destIndex) || destIndex < 0 || destIndex > 7){
+		console.log(command);
+		console.log(destinationS, sourceS, numerical, destIndex, sourIndex);
+
+		if (!command[1].startsWith("R") || Number.isNaN(destIndex) || destIndex < 0 || destIndex > 7){
 			return {success: false, message: "Destination Register is NaN or out of bounds."}
 		}
 
-		if (Number.isNaN(sourIndex) || sourIndex < 0 || sourIndex > 7){
+		if (!command[2].startsWith("R") || Number.isNaN(sourIndex) || sourIndex < 0 || sourIndex > 7){
 			return {success: false, message: "First Source Register is NaN or out of bounds."}
+		}
+
+		if (Number.isNaN(numerical)){
+			return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag"}
 		}
 
 		if (command[3].startsWith("R")){
@@ -206,8 +255,10 @@ export class LC3Simulator {
 		let destinationS = command[1].substring(1, 2);
 		let numerical = this.convertNumber(command[2]);
 
+		console.log(destinationS, numerical)
+		
 		let registerIndex = Number(destinationS);//Get R#
-		if (Number.isNaN(registerIndex) || registerIndex > 7 || registerIndex < 0){
+		if (!command[1].startsWith("R") || Number.isNaN(registerIndex) || registerIndex > 7 || registerIndex < 0){
 			return {success: false, message: "Destination Register is NaN or out of bounds."};
 		}
 
@@ -226,10 +277,11 @@ export class LC3Simulator {
 		let destinationS = command[1].substring(1, 2);
 
 		let destIndex = Number(destinationS);
-		if (Number.isNaN(destIndex) || destIndex > 7 || destIndex < 0){
-			return {success: false, message: ""};
+		if (!command[1].startsWith("R") || Number.isNaN(destIndex) || destIndex > 7 || destIndex < 0){
+			return {success: false, message: "Source Register is NaN or out of bounds."};
 		}
 
+		this.registers[destIndex] = ~this.registers[destIndex];
 
 		return {success: true}
 	}
@@ -276,15 +328,6 @@ export class LC3Simulator {
 		if (line.startsWith("STR ")) return true;
 		
 		if (line.startsWith("TRAP ")) return true;
-
-		return false;
-	}
-
-	private isMacro(line: string): boolean{
-		if (line.match(/HALT\s*/g)) return true;
-		//if (line.match(/HALT\s*/g)) return true; 
-
-		//TODO: I'll need to find more of these
 
 		return false;
 	}
