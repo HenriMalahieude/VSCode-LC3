@@ -166,9 +166,10 @@ export class LC3Simulator extends EventEmitter{
 		if (manip.startsWith(".") || manip.startsWith(";") || manip.length <= 0) return {success: true};
 
 		if (!this.startsWithCommand(manip)){
-			manip = manip.substring(manip.indexOf(" ")+1) //Removes the label
+			manip = manip.substring(manip.indexOf(" ")+1) //Removes the label (NOTE: for positional labels)
 		}
 
+		this.pc++;
 		//Macros
 		if (manip.match(/\s*HALT\s*/gm)){
 			console.log('Halting program')
@@ -179,19 +180,47 @@ export class LC3Simulator extends EventEmitter{
 
 			return {success: true};
 		}else if (manip.match(/\s*GETC\s*/gm)){
-			//TODOL Intiate GETC with event
+			//TODO: Intiate GETC with event
 
 			return {success: true};
 		}
 
 		//Real Opcodes
-		this.pc++;
-		if (manip.startsWith("LD ")){
-			return this.LD(manip);
-		}else if (manip.startsWith("ADD ")){
+		//Note: This isn't really scalable, or very easy to work with. But since the opcodes are finite.... it's fine.
+		if (manip.startsWith("ADD ")){
 			return this.ADD(manip);
+		}else if (manip.startsWith("AND ")){
+			return this.AND(manip);
+		}else if (manip.startsWith("BR ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("JMP ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("JSR ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("JSRR ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("LD ")){
+			return this.LD(manip);
+		}else if (manip.startsWith("LDI ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("LDR ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("LEA ")){
+			return {success: false, message: "TODO"}; //TODO
 		}else if (manip.startsWith("NOT ")){
 			return this.NOT(manip);
+		}else if (manip.startsWith("RET ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("RTI ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("ST ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("STI ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("STR ")){
+			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.startsWith("TRAP ")){
+			return {success: false, message: "TODO"}; //TODO
 		}
 
 		return {success: false, message: "Couldn't understand line. Is that a valid OPCode?"};
@@ -219,8 +248,8 @@ export class LC3Simulator extends EventEmitter{
 		let destIndex = Number(destinationS);
 		let sourIndex = Number(sourceS);
 
-		console.log(command);
-		console.log(destinationS, sourceS, numerical, destIndex, sourIndex);
+		//console.log(command);
+		//console.log(destinationS, sourceS, numerical, destIndex, sourIndex);
 
 		if (!command[1].startsWith("R") || Number.isNaN(destIndex) || destIndex < 0 || destIndex > 7){
 			return {success: false, message: "Destination Register is NaN or out of bounds."}
@@ -243,9 +272,33 @@ export class LC3Simulator extends EventEmitter{
 				return {success: false, message: "Second Source Register is NaN or out of bounds."}
 			}
 		}
-		//TODO: Labels
 
 		this.registers[destIndex] = this.registers[sourIndex] + numerical;
+
+		return {success: true};
+	}
+
+	private AND(line: string): Result{
+		let command  = line.split(" ");
+		let destinationS = command[1].substring(1, 2);
+		let sourceS = command[2].substring(1, 2);
+		let numerical
+
+		if (!command[3].startsWith("R")){
+			numerical = this.convertNumber(command[3]);
+		}else{
+			numerical = Number(command[3].substring(1,2));
+			if (Number.isNaN(numerical) || numerical < 0 || numerical > 7){
+				return {success: false, message: "Second Source Register is NaN or out of bounds."};
+			}
+
+			numerical = this.registers[numerical];
+		}
+
+		let destIndex = Number(destinationS);
+		let sourIndex = Number(sourceS);
+
+		this.registers[destIndex] = this.registers[sourIndex] & numerical; //Bitwise And
 
 		return {success: true};
 	}
@@ -320,7 +373,7 @@ export class LC3Simulator extends EventEmitter{
 
 		if (line.startsWith("NOT ")) return true;
 
-		if (line.match(/RET\s*/g)) return true;
+		if (line.startsWith("RET ")) return true;
 		if (line.match(/RTI\s*/g)) return true;
 		
 		if (line.startsWith("ST ")) return true;
