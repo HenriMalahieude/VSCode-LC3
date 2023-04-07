@@ -26,7 +26,7 @@ export class LC3Simulator extends EventEmitter{
 
 	registers: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
 	memory: Map<number, LC3Data>;
-	pc: number = 0x3000;
+	pc: number = 0x2FFF;
 	psr: number = 0;
 	mcr: number = 0;
 
@@ -298,6 +298,28 @@ export class LC3Simulator extends EventEmitter{
 		let destIndex = Number(destinationS);
 		let sourIndex = Number(sourceS);
 
+		if (!command[1].startsWith("R") || Number.isNaN(destIndex) || destIndex < 0 || destIndex > 7){
+			return {success: false, message: "Destination Register is NaN or out of bounds."}
+		}
+
+		if (!command[2].startsWith("R") || Number.isNaN(sourIndex) || sourIndex < 0 || sourIndex > 7){
+			return {success: false, message: "First Source Register is NaN or out of bounds."}
+		}
+
+		if (Number.isNaN(numerical)){
+			return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag."}
+		}
+
+		if (command[3].startsWith("R")){
+			let temp = Number(command[3].substring(1, 2));
+
+			if (!Number.isNaN(temp) && temp >= 0 && temp <= 7){
+				numerical = this.registers[temp]
+			}else{
+				return {success: false, message: "Second Source Register is NaN or out of bounds."}
+			}
+		}
+
 		this.registers[destIndex] = this.registers[sourIndex] & numerical; //Bitwise And
 
 		return {success: true};
@@ -320,21 +342,28 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Source is NaN or out of signed 9-bit bounds."};
 		}
 
-		this.registers[registerIndex] = numerical;
-	
+		//this.registers[registerIndex] = numerical;
+		//TODO: Look in Memory
+
 		return {success: true};
 	}
 
 	private NOT(line: string): Result{
 		let command = line.split(" ");
 		let destinationS = command[1].substring(1, 2);
+		let sourceS = command[2].substring(1,2);
 
 		let destIndex = Number(destinationS);
+		let sourIndex = Number(sourceS);
 		if (!command[1].startsWith("R") || Number.isNaN(destIndex) || destIndex > 7 || destIndex < 0){
+			return {success: false, message: "Destination Register is NaN or out of bounds."};
+		}
+
+		if (!command[2].startsWith("R") || Number.isNaN(sourIndex) || sourIndex > 7 || sourIndex < 0){
 			return {success: false, message: "Source Register is NaN or out of bounds."};
 		}
 
-		this.registers[destIndex] = ~this.registers[destIndex];
+		this.registers[destIndex] = ~this.registers[sourIndex];
 
 		return {success: true}
 	}
@@ -383,5 +412,13 @@ export class LC3Simulator extends EventEmitter{
 		if (line.startsWith("TRAP ")) return true;
 
 		return false;
+	}
+
+	private removeComment(line: string): string{
+		if (line.indexOf(";") >= 0){
+			return line.substring(0, line.indexOf(";"));
+		}
+
+		return line;
 	}
 }
