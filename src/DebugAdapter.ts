@@ -260,7 +260,15 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	private formatNumber(x: number) {
-		return this._valuesInHex ? '0x' + x.toString(16) : x.toString(10);
+		if (this._valuesInHex){
+			let nn = x;
+			if (nn < 0){
+				nn += 16 * 16 * 16 * 16; //Since it's negative we don't want 0x-5, we want 0xFFFB;
+			}
+			return '0x' + nn.toString(16)
+		}
+
+		return x.toString(10);
 	}
 
 	private sendFormattedErrorMessage(response: DebugProtocol.Response, status: Result){
