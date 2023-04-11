@@ -221,28 +221,46 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		return para.substring(0, 8).toLocaleUpperCase().split(" ")[0]
 	}
 
-	if (extractPseudoOp(fullOperation[0]) == ".ORIG"){
-		if (fullOperation.length != 2){
-			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \n.ORIG x0000", err);
+	if (txt.startsWith(".")){
+		//Pseudo relating to code location
+		if (extractPseudoOp(fullOperation[0]) == ".ORIG"){
+			if (fullOperation.length != 2){
+				return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \n.ORIG x0000", err);
+			}
+	
+			let code = fullOperation[1].toLocaleLowerCase()
+			if (!code.startsWith('x') && !code.startsWith('#') && !code.startsWith("b")){
+				return new vscode.Diagnostic(fullLineRange, "Trap Vector requires a hex/numerical value", err);
+			}
+			return null
+		}else if (extractPseudoOp(fullOperation[0]) == ".END"){
+			if (fullOperation.length != 1){
+				return new vscode.Diagnostic(fullLineRange, "Incorrect Pseudo-op format. Single operand required: \n.END", err);
+			}
+
+			return null
 		}
 
-		let code = fullOperation[1].toLocaleLowerCase()
-		if (!code.startsWith('x') && !code.startsWith('#') && !code.startsWith("b")){
-			return new vscode.Diagnostic(fullLineRange, "Trap Vector requires a hex/numerical value", err);
-		}
-	}else if (fullOperation.length >= 2 && (extractPseudoOp(fullOperation[1]) == ".FILL" || extractPseudoOp(fullOperation[1]) == ".STRINGZ" || extractPseudoOp(fullOperation[1]) == ".BLKW")){ //pre-compiler actions
-		if (fullOperation.length < 3){			
+		//Pseudo relating to Variables
+		let isVariablePseudoFirst = (extractPseudoOp(fullOperation[0]) == ".FILL" || extractPseudoOp(fullOperation[0]) == ".STRINGZ" || extractPseudoOp(fullOperation[0]) == ".BLKW");
+		
+		if (isVariablePseudoFirst){
 			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \nlabel .PSEUDO info", err);
+		}else if (fullOperation.length >= 2){
+			let isVariablePseudoSecond = (extractPseudoOp(fullOperation[1]) == ".FILL" || extractPseudoOp(fullOperation[1]) == ".STRINGZ" || extractPseudoOp(fullOperation[1]) == ".BLKW");
+			
+			if (isVariablePseudoSecond && fullOperation.length < 3){
+				return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \nlabel .PSEUDO info", err);
+			}
+
+			return null
 		}
-	}else if (extractPseudoOp(fullOperation[0]) == ".END"){
-		if (fullOperation.length != 1){
-			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \n.END", err);
-		}
-	}else if (txt.startsWith(".") && !(extractPseudoOp(fullOperation[0]) == ".FILL" || extractPseudoOp(fullOperation[0]) == ".STRINGZ" || extractPseudoOp(fullOperation[0]) == ".BLKW")){
-		return new vscode.Diagnostic(fullLineRange, "Unrecognized Pseudo-Operator", err);
-	}/*else if (!txt.startsWith(".") && fullOperation.length >= 2){
+
+		return new vscode.Diagnostic(fullLineRange, "Unrecognized Pseudo-Operator, compiler will ignore line.", err);
+	}/*else if (fullOperation.length >= 2){
 		return new vscode.Diagnostic(fullLineRange, "Labels cannot have spaces. Please use underscore (_) instead", err);
 	}*/
+	
 
 	return null;
 }
