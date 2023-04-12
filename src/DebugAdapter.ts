@@ -77,6 +77,11 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 				return;
 			}
 
+			this._debugger.on("warning", (rr:Result) => {
+				this.outputChannel.show();
+				this.outputChannel.appendLine(this.formatResult(rr));
+			})
+
 			//Since this simulator automatically stops on start
 			this.sendEvent(new DAP.StoppedEvent("entry", lc3DebugAdapter.threadID));
 		} catch (e) {
@@ -274,7 +279,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	private sendFormattedErrorMessage(response: DebugProtocol.Response, status: Result){
 		if (!this._debugger) return;
 
-		let info = `(Line ${this._debugger.status.line}) ${this._debugger.status.context}: ${this._debugger.status.message}`
+		let info = this.formatResult(status);
 
 		this.outputChannel.clear();
 		this.outputChannel.show();
@@ -286,5 +291,9 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 			format: info,
 			showUser: true
 		})
+	}
+
+	private formatResult(res: Result): string {
+		return `(Line ${res.line}) ${res.context}: ${res.message}`;
 	}
 }
