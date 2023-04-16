@@ -67,8 +67,17 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 			vscode.window.showTextDocument(td); //Focus this Text Document
 
+			this.outputChannel.clear();
 			this._debugger = new LC3Simulator(td);
-			//Insert Compile/Preprocess error here
+
+			this._debugger.on("warning", (rr:Result) => {
+				//console.log("Received warning");
+				this.outputChannel.show();
+				this.outputChannel.appendLine(this.formatResult(rr));
+			})
+
+			this._debugger.InitializeSimulator();
+
 			if (this._debugger.status.success === false){
 				response.success = false;
 				this.sendFormattedErrorMessage(response, this._debugger.status);
@@ -77,18 +86,12 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 				return;
 			}
 
-			this._debugger.on("warning", (rr:Result) => {
-				this.outputChannel.show();
-				this.outputChannel.appendLine(this.formatResult(rr));
-			})
-
 			//Since this simulator automatically stops on start
-			this.sendEvent(new DAP.StoppedEvent("entry", lc3DebugAdapter.threadID));
+			this.sendEvent(new DAP.StoppedEvent("entry", lc3DebugAdapter.threadID)); //NOTE: These events require a ThreadId, or it will hitch forever
 		} catch (e) {
-
 			return this.sendErrorResponse(response, {
 				id: 1201,
-				format: "Could not read from file provided. Must be in './Folder/Program.asm' or './Program.asm' format.",
+				format: "Could not read from file provided. Must be in './Folder/Program.asm' or './Program.asm' format.\n(Error: " + e + ")",
 				showUser: true
 			});
 		}
@@ -215,7 +218,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
 		if (this._debugger){
 			let info: Result = this._debugger.stepOver(true);
-			console.log(info)
+			//console.log(info)
 			if (info.success === false){
 				response.success = false;
 				return this.sendFormattedErrorMessage(response, this._debugger.status);
@@ -280,8 +283,6 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		if (!this._debugger) return;
 
 		let info = this.formatResult(status);
-
-		this.outputChannel.clear();
 		this.outputChannel.show();
 		this.outputChannel.appendLine(info);
 
