@@ -67,7 +67,7 @@ export class LC3Simulator extends EventEmitter{
 	public InitializeSimulator(){
 		if (this.halted || this.processed) return;
 
-		this.status = this.preprocess();
+		this.status = this.preprocess(undefined);
 		if (!this.status.success){
 			this.halted = true;
 			this.status.context = "Preprocessing"
@@ -141,20 +141,30 @@ export class LC3Simulator extends EventEmitter{
 
 	//-----------------------Meta-Functions-----------------------
 
-	protected preprocess(): Result{
-		if (!this.file) return {success: false, message: "Opened in testing mode."};
+	protected preprocess(testingFile: string[] | undefined): Result{
+		if (!this.file && !testingFile) return {success: false, message: "Opened in testing mode without"};
 
 		let currentLocation: number = -1; //Sentinel Number
 		let codeAllowed: boolean = false; //To restrict code to between .ORIG and .END
 		let subroutineMark: boolean = false; //To be able to use the subroutineLocations property properly
 
-		for (let i = 1; i-1 < this.file.lineCount; i++){
-			let lineOfText = this.file.lineAt(i-1)
-			let txt = lineOfText.text.trim().toLocaleUpperCase();
+		let max:number = this.file ? this.file.lineCount : (testingFile ? testingFile.length: -1);
+
+		function getLine(dex:number, file: vscode.TextDocument | undefined, testFile: string[] | undefined): string{
+			if (file){
+				return file.lineAt(dex).text;
+			}else if (testFile){
+				return testFile[dex]; 
+			}
+			return "";
+		}
+
+		for (let i = 1; i-1 < max; i++){
+			let txt = getLine(i-1, this.file, testingFile).trim().toLocaleUpperCase();
 			let command = txt.split(" ");
 
 			//Ignore Empty Space and Comments
-			if (lineOfText.isEmptyOrWhitespace || txt.substring(0, 1) == ";") continue; 
+			if (txt.search("^\s*$") > -1 || txt.substring(0, 1) == ";") continue; 
 
 			//The start of routine/subroutine
 			if (txt.startsWith(".ORIG ") && command.length == 2){
