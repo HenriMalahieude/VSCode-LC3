@@ -102,8 +102,8 @@ export class SimulationTester extends Sim.LC3Simulator {
 		//Test 5-bit limit
 		this.resetSimulationState();
 		this.registers[5] = 1;
-		let test3 = this.AND("AND R6, R5, #16");
-		if (test2.success || this.registers[6] != 1) return {success: false, message: "Five bit limit for ANDs failed?"};
+		let test3 = this.AND("AND R5, R5, #16");
+		if (test3.success || this.registers[5] != 1) return {success: false, message: "Five bit limit for ANDs failed?"};
 
 		return {success: true};
 	}
@@ -149,8 +149,26 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	private testNOT(): Sim.Result{
+		//Test all registers
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			let register = "R"+String(i);
+			this.registers[i] = 123;
+			let test0 = this.NOT("NOT " + register + ", " + register);
+			if (!test0.success) return test0;
+			if (this.registers[i] != ~(123)) return {success: false, message: "Register " + register + " failed not. ~123 =? " + this.registers[i]};
+		}
 
-		return {success: false, message: "TODO"};
+		//Test Negative Number
+		this.resetSimulationState();
+		this.registers[0] = 5;
+		let test1 = this.NOT("NOT R0, R0");
+		if (!test1.success) return test1;
+		let test2 = this.ADD("ADD R0, R0, #6");
+		if (!test2.success) return test2;
+		if (this.registers[0] != 0) return {success: false, message: "Failed to do proper subtraction with NOT. ~5 + 6 =? " + this.registers[0]};
+
+		return {success: true};
 	}
 
 	private testRTI(): Sim.Result{
@@ -174,8 +192,15 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	private testTRAP(): Sim.Result{
+		this.resetSimulationState();
 
-		return {success: false, message: "TODO"};
+		let test0 = this.TRAP("TRAP X25");
+		if (!test0.success) return test0;
+		if (!this.halted) return {success: false, message: "Failed to HALT program/computer."};
+
+		//NOTE: Can't really test the other stuff.....
+
+		return {success: true};
 	}
 
 	//TODO: Test Macros
