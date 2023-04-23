@@ -401,7 +401,7 @@ export class LC3Simulator extends EventEmitter{
 
 		if (!command[3].startsWith("R")){
 			numerical = this.convertNumber(command[3]);
-			if (numerical > 15 || numerical < -16){
+			if (!this.bitLimit(numerical, 5)){
 				return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
 			}
 		}else{
@@ -484,13 +484,17 @@ export class LC3Simulator extends EventEmitter{
 			let temp = Number(command[3].substring(1, 2));
 
 			if (!Number.isNaN(temp) && temp >= 0 && temp <= 7){
-				numerical = this.registers[temp]
+				numerical = this.registers[temp];
 			}else{
 				return {success: false, message: "Second Source Register is NaN or out of bounds."}
 			}
 		}
 
-		this.registers[destIndex] = this.registers[sourIndex] & numerical; //Bitwise And
+		if (!this.bitLimit(numerical, 5)){
+			return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
+		}
+		
+		this.registers[destIndex] = this.convertToUnsigned(this.registers[sourIndex]) & this.convertToUnsigned(numerical); //Bitwise And
 
 		this.updateConditionCodes(destIndex);
 
@@ -703,5 +707,18 @@ export class LC3Simulator extends EventEmitter{
 		}else{
 			this.condition_codes["Z"] = true;
 		}
+	}
+
+	protected bitLimit(n: number, limit:number): boolean{
+		let posLim:number = (Math.pow(2, limit-1)) - 1;
+		let negLim = -1 * (Math.pow(2, limit-1));
+		//console.log(posLim, negLim, n);
+		if (n > posLim || n < negLim) return false;
+
+		return true;
+	}
+
+	protected convertToUnsigned(n: number): number{
+		return n >= 0 ? n : 0xFFFF - n;
 	}
 }
