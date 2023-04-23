@@ -8,17 +8,18 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	public runAllTests(){
+		console.log("Running Simulator Test Suite")
 		let testState = {"TOTAL": 0, "FAIL": 0};
 
 		function check(name: string, item: Sim.Result){
 			testState["TOTAL"] += 1;
 			if (!item.success){
 				testState["FAIL"] += 1;
-				console.log("\tFailed " + name +"\n\t\t" + item.message);
+				console.log("\t\tFailed " + name +"\n\t\t\tInfo: " + item.message + "\n");
 			}
 		}
 		
-		console.log("Running Op-Code Test");
+		console.log("\tOp-Code Test");
 		
 		check("ADD", this.testADD());
 		check("AND", this.testAND());
@@ -47,26 +48,26 @@ export class SimulationTester extends Sim.LC3Simulator {
 			let register = "R"+String(i);
 			let test0 = this.ADD("ADD " + register + ", " + register + ", #1");
 			if (!test0.success) return test0;
-			if (this.registers[i] != 1) return {success: false, message: "Register " + register + " failed an addition?"};
+			if (this.registers[i] != 1) return {success: false, message: "Register " + register + " failed 0 ADD 1?"};
 		}
 
 		//Test Negative Numbers
 		this.resetSimulationState();
 		let test1 = this.ADD("ADD R0, R0, #-1");
 		if (!test1.success) return test1;
-		if (this.registers[0] != -1) return {success: false, message: "Negative addition failed?"};
+		if (this.registers[0] != -1) return {success: false, message: "Negative ADD failed?"};
 
 		//Test Register Additions
 		this.resetSimulationState();
 		this.registers[0] = 1; this.registers[1] = 2;
 		let test2 = this.ADD("ADD R2, R1, R0");
 		if (!test2.success) return test2;
-		if (this.registers[2] != 3 || this.registers[1] != 2 || this.registers[0] != 1) return {success: false, message: "Pure register addition failed?"};
+		if (this.registers[2] != 3 || this.registers[1] != 2 || this.registers[0] != 1) return {success: false, message: "Pure register ADD failed?"};
 
 		//Test 5-bit limit
 		this.resetSimulationState();
 		let test3 = this.ADD("ADD R7, R7, x3000");
-		if (test3.success || this.registers[7] == 0x3000) return {success: false, message: "Five-bit limit for additions failed?"};
+		if (test3.success || this.registers[7] == 0x3000) return {success: false, message: "Five-bit limit for ADDs failed?"};
 
 		return {success: true};
 	}
@@ -79,17 +80,32 @@ export class SimulationTester extends Sim.LC3Simulator {
 			this.registers[i] = 1;
 			let test0 = this.AND("AND " + register + ", " + register + ", #0");
 			if (!test0.success) return test0;
-			if (this.registers[i] != 0) return {success: false, message: "Register " + register + " failed zero and?"};
+			if (this.registers[i] != 0) return {success: false, message: "Register " + register + " failed 0 AND 1?"};
 		}
 
 		//Test Negative Ands
-
+		this.resetSimulationState();
+		this.registers[3] = -1; //Equivalent to 0xFFFE
+		this.registers[4] = 1;
+		let test1 = this.AND("AND R0, R3, R4");
+		if (!test1.success) return test1;
+		if (this.registers[0] != 0) return {success: false, message: "Negative AND failed? (1 & -1 =? " + this.registers[0] +")"};
 
 		//Test Register Ands
+		this.resetSimulationState();
+		this.registers[0] = 1;
+		this.registers[1] = 2;
+		let test2 = this.AND("AND R2, R1, R0");
+		if (!test2.success) return test2;
+		if (this.registers[2] != 0) return {success: false, message: "Pure register AND failed?"};
 
 		//Test 5-bit limit
+		this.resetSimulationState();
+		this.registers[5] = 1;
+		let test3 = this.AND("AND R6, R5, #16");
+		if (test2.success || this.registers[6] != 1) return {success: false, message: "Five bit limit for ANDs failed?"};
 
-		return {success: false, message: "TODO"};
+		return {success: true};
 	}
 
 	private testBR(): Sim.Result{

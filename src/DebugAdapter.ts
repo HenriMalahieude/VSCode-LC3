@@ -123,10 +123,11 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments, request?: DebugProtocol.Request | undefined): void {
+		//TODO: Do Stack at 0xFE00
 		let lin: number = 0;
 		let txt: string = "";
 		let sourceFile: DAP.Source = new DAP.Source("File");
-		if (this._debugger){
+		if (this._debugger && this._debugger.file){
 			lin = this._debugger.getCurrentLine();
 			txt = this._debugger.getCurrentInstruction();
 
@@ -161,7 +162,6 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
-
 		// runtime supports no threads so just return a default thread.
 		response.body = {
 			threads: [
@@ -173,8 +173,8 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request): Promise<void> {
+		//TODO: Memory/Searching memory
 		if (this._debugger){
-			//console.log(this._debugger.registers)
 			response.body = {
 				variables: [
 					{name: "R0", type: "integer", value: this.formatNumber(this._debugger.registers[0]), variablesReference: 0},
