@@ -90,7 +90,7 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	public stepOver(forward: boolean): Result{
-		console.log("Asked To Step Over Line " + this.currentLine);
+		//console.log("Asked To Step Over Line " + this.currentLine);
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
 		if (this.file.lineCount < this.currentLine) {
@@ -521,7 +521,7 @@ export class LC3Simulator extends EventEmitter{
 
 		if (execute){
 			this.pc=whereTo.pc-1;
-			this.pc=whereTo.fileIndex-1;
+			this.currentLine=whereTo.fileIndex-1;
 		}
 
 		return {success: true};
