@@ -8,20 +8,20 @@ export interface Result{
 	message?: string;
 }
 
-interface Bit16Location{
+export interface Bit16Location{
 	fileIndex: number;
 	pc: number;
 }
 
-interface LC3Data{
+export interface LC3Data{
 	assembly: string | undefined;
 	machine: number;
 	location: Bit16Location;
 }
 
-const emptyLC3Data: LC3Data = { //For Memory Traversal TODO
+export const emptyLC3Data: LC3Data = { //For Memory Traversal TODO
 	assembly: "",
-	machine: 0b0000000000000000,
+	machine: 0,
 	location: {fileIndex: 0, pc: 0x3000},
 }
 
@@ -31,32 +31,37 @@ export class LC3Simulator extends EventEmitter{
 	halted: boolean = false;
 
 	registers: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+	condition_codes = {"N": false, "Z": true, "P": false}; //TODO: See what the condition codes are initialized to in LC3Tools
 	memory: Map<number, LC3Data>;
 	pc: number = 0x2FFF;
 	psr: number = 0;
 	mcr: number = 0;
 
-	public file: vscode.TextDocument;
-	private currentLine: number = -1;
-	private processed: boolean = false;
+	public file: vscode.TextDocument | undefined;
+	protected currentLine: number = -1;
+	protected processed: boolean = false;
 
 	//Map .ORIG x#### locations to file line numbers (for return/jumping/conditionals)
-	private subroutineLocations: Map<number, number>;
+	protected subroutineLocations: Map<number, number>;
 
 	//Map Labels to locations in memory
-	private labelLocations: Map<string, Bit16Location>; //For variables, all the way to positional labels
+	protected labelLocations: Map<string, Bit16Location>; //For variables, all the way to positional labels
 
-	constructor(f: vscode.TextDocument){
+	constructor(f: vscode.TextDocument | undefined){
 		super();
 		//Initialize the machine
 		this.memory = new Map<number, LC3Data>(); //Potentially get a file to pre-load system memory into here
 
 		//Initialize the Object
-		this.file = f;
+		if (f) this.file = f;
 		this.subroutineLocations = new Map<number, number>();
 		this.labelLocations = new Map<string, Bit16Location>();
 
-		console.log("Opened and ready to simulate: " + this.file.fileName)
+		if (f && this.file) {
+			console.log("Opened and ready to simulate: " + this.file.fileName);
+		}else{
+			//console.log("Opened simulator in testing mode.");
+		}
 	}
 
 	public InitializeSimulator(){
@@ -74,10 +79,11 @@ export class LC3Simulator extends EventEmitter{
 	//-----------------------Public Functions for Simulator Control-----------------------
 
 	public getCurrentLine(): number{
-		return this.currentLine;
+		return this.currentLine+1;
 	}
 
 	public getCurrentInstruction(offset:number = 0): string{
+		if (!this.file) return "";
 		let lineString = this.file.lineAt(this.currentLine + offset);
 
 		return lineString.text;
@@ -85,7 +91,7 @@ export class LC3Simulator extends EventEmitter{
 
 	public stepOver(forward: boolean): Result{
 		console.log("Asked To Step Over Line " + this.currentLine);
-		if (!this.status.success || this.halted) {return this.status;}
+		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
 		if (this.file.lineCount < this.currentLine) {
 			this.status = {success: true, context: "Complete", message: "Complete", line: this.file.lineCount}
@@ -124,7 +130,7 @@ export class LC3Simulator extends EventEmitter{
 		return {success: true};
 	}
 
-	public run(): Result{
+	public run(): Result{//TODO: Add in Breakpoints
 		console.log("Asked to Run!")
 		if (!this.status.success || this.halted) {return this.status;}
 
@@ -132,12 +138,12 @@ export class LC3Simulator extends EventEmitter{
 
 		return {success: true};
 	}
-	
-	//TODO: Add in Breakpoints
 
 	//-----------------------Meta-Functions-----------------------
 
-	private preprocess(): Result{
+	protected preprocess(): Result{
+		if (!this.file) return {success: false, message: "Opened in testing mode."};
+
 		let currentLocation: number = -1; //Sentinel Number
 		let codeAllowed: boolean = false; //To restrict code to between .ORIG and .END
 		let subroutineMark: boolean = false; //To be able to use the subroutineLocations property properly
@@ -147,7 +153,8 @@ export class LC3Simulator extends EventEmitter{
 			let txt = lineOfText.text.trim().toLocaleUpperCase();
 			let command = txt.split(" ");
 
-			if (lineOfText.isEmptyOrWhitespace || txt.substring(0, 1) == ";") continue; //Ignore Empty Space and Comments
+			//Ignore Empty Space and Comments
+			if (lineOfText.isEmptyOrWhitespace || txt.substring(0, 1) == ";") continue; 
 
 			//The start of routine/subroutine
 			if (txt.startsWith(".ORIG ") && command.length == 2){
@@ -267,27 +274,16 @@ export class LC3Simulator extends EventEmitter{
 				continue;
 			}
 
+			//Positional Labels
 			if (currentLocation > 0x2FFF){
 				if (!this.startsWithCommand(txt)){
-					/*let ll: LC3Label = {
-						fileLine: i,
-						location: currentLocation,
-						label: command[0],
-						details: {
-							assembly: txt,
-							machine: 0,
-						}
-					}*/
-
-					//console.log(command.length, command[1].substring(0,1), this.startsWithCommand(command[1]+" "), command[1]);
-
-					if (command.length > 1 && command[1].substring(0, 1) != ";" && this.startsWithCommand(command[1]+" ")){
+					if (command.length > 1 && command[1].substring(0, 1) != ";" && this.startsWithCommand(command[1]+" ")){ //If there are opcodes after this label
 						this.memory.set(currentLocation, 
 							{
 								assembly: txt,
-								machine: 0,
+								machine: this.convertCommandToMachine(txt),
 								location: {pc: currentLocation, fileIndex:i-1},
-							})//TODO
+							});
 					}else if (command.length > 1 && command[1].substring(0, 1) != ";"){
 						return {success: false, line: i, message: "Positional label properly labeled, but did not understand following command on same line."};
 					}
@@ -306,10 +302,11 @@ export class LC3Simulator extends EventEmitter{
 				return {success: false, line: i, message: "Missing location to place opcodes at. (.ORIG x3000?)"};
 			}
 			
+			//Otherwise, it's a command/opcode and we just record it into memory
 			this.memory.set(currentLocation, 
 				{
 					assembly: txt,
-					machine: 0,
+					machine: this.convertCommandToMachine(txt),
 					location: {pc: currentLocation, fileIndex:i-1},
 				})
 
@@ -323,13 +320,17 @@ export class LC3Simulator extends EventEmitter{
 		return {success: true};
 	}
 
-	private interpretCommand(line: string): Result{
+	protected interpretCommand(line: string): Result{
 		let manip = line.trim().toLocaleUpperCase();
 		if (manip.startsWith(".END")) { return {success: false, message: "Reached End of Program without halting. Forcing an end."}; }
 		if (manip.startsWith(".") || manip.startsWith(";") || manip.length <= 0) return {success: true};
 
 		if (!this.startsWithCommand(manip)){
-			manip = manip.substring(manip.indexOf(" ")+1) //Removes the label (NOTE: for positional labels)
+			if (manip.split(" ").length > 1){
+				manip = manip.substring(manip.indexOf(" ")+1) //Removes the label (NOTE: for positional labels)	
+			}else{
+				return {success: true};
+			}
 		}
 
 		//Run this again incase of Pseudo operator .FILL or .STRINGZ or .BLKW
@@ -337,18 +338,18 @@ export class LC3Simulator extends EventEmitter{
 
 		this.pc++;
 		//Macros
-		if (manip.match(/\s*HALT\s*/gm)){
-			//console.log('Halting program')
-			this.halted = true;
-			return {success: true};
-		}else if (manip.match(/\s*PUTC\s*/gm)){
-			//TODO: Initiate PUTC with event
-
-			return {success: true};
-		}else if (manip.match(/\s*GETC\s*/gm)){
-			//TODO: Intiate GETC with event
-
-			return {success: true};
+		if (manip.match(/\s*GETC\s*/gm)){
+			return this.TRAP("TRAP X20");
+		}else if (manip.match(/\s*OUT\s*/gm)){
+			return this.TRAP("TRAP X21");
+		}else if (manip.match(/\s*PUTS\s*/gm)){
+			return this.TRAP("TRAP X22");
+		}else if (manip.match(/\s*IN\s*/gm)){
+			return this.TRAP("TRAP X23");
+		}else if (manip.match(/\s*HALT\s*/gm)){
+			return this.TRAP("TRAP X25");
+		}else if (manip.match(/\s*RET\s*/gm)){
+			return this.JMP("JMP R7");
 		}
 
 		//Real Opcodes
@@ -357,8 +358,8 @@ export class LC3Simulator extends EventEmitter{
 			return this.ADD(manip);
 		}else if (manip.startsWith("AND ")){
 			return this.AND(manip);
-		}else if (manip.startsWith("BR ")){
-			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.match(/BR[|NZP]/g)){
+			return this.BR(manip);
 		}else if (manip.startsWith("JMP ")){
 			return this.JMP(manip);
 		}else if (manip.startsWith("JSR ")){
@@ -375,8 +376,6 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "TODO"}; //TODO
 		}else if (manip.startsWith("NOT ")){
 			return this.NOT(manip);
-		}else if (manip.startsWith("RET ")){
-			return {success: false, message: "TODO"}; //TODO
 		}else if (manip.startsWith("RTI ")){
 			return {success: false, message: "TODO"}; //TODO
 		}else if (manip.startsWith("ST ")){
@@ -394,7 +393,7 @@ export class LC3Simulator extends EventEmitter{
 
 	//-----------------------ALL THE OPCODES-----------------------
 
-	private ADD(line: string): Result{
+	protected ADD(line: string): Result{
 		let command  = line.split(" ");
 		let destinationS = command[1].substring(1, 2);
 		let sourceS = command[2].substring(1, 2);
@@ -402,6 +401,9 @@ export class LC3Simulator extends EventEmitter{
 
 		if (!command[3].startsWith("R")){
 			numerical = this.convertNumber(command[3]);
+			if (numerical > 15 || numerical < -16){
+				return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
+			}
 		}else{
 			numerical = Number(command[3].substring(1,2));
 			if (Number.isNaN(numerical) || numerical < 0 || numerical > 7){
@@ -441,10 +443,12 @@ export class LC3Simulator extends EventEmitter{
 
 		this.registers[destIndex] = this.registers[sourIndex] + numerical;
 
+		this.updateConditionCodes(destIndex);
+
 		return {success: true};
 	}
 
-	private AND(line: string): Result{
+	protected AND(line: string): Result{
 		let command  = line.split(" ");
 		let destinationS = command[1].substring(1, 2);
 		let sourceS = command[2].substring(1, 2);
@@ -488,10 +492,42 @@ export class LC3Simulator extends EventEmitter{
 
 		this.registers[destIndex] = this.registers[sourIndex] & numerical; //Bitwise And
 
+		this.updateConditionCodes(destIndex);
+
 		return {success: true};
 	}
 
-	private JMP(line: string): Result{
+	protected BR(line: string): Result{
+		let command = line.split(" ");
+		
+		//Check nzp valid order, watch this:
+		let orderCheck = command[0].replace("BR", "").replace("N", "1").replace("Z", "2").replace("P", "3");
+		let orderNumerical = Number(orderCheck);
+		if (orderNumerical != 123 && orderNumerical != 23 && orderNumerical != 13 && orderNumerical != 12 && orderNumerical > 3){
+			return {success: false, message: "Please have proper ordering of condition codes.\n(n before z before p)"};
+		} //You know, I thought this would be a clever trick.... not sure anymore....
+
+		let whereTo = this.labelLocations.get(command[1]);
+		if (whereTo === undefined){
+			return {success: false, message: "Attempting to jump to registered location in memory. Forcing simulation end."};
+		}
+
+		let execute = false;
+		if ((this.condition_codes["N"] && command[0].indexOf("N") > -1) ||
+			(this.condition_codes["Z"] && command[0].indexOf("Z") > -1) ||
+			(this.condition_codes["P"] && command[0].indexOf("P") > -1)){
+				execute = true;
+		}
+
+		if (execute){
+			this.pc=whereTo.pc-1;
+			this.pc=whereTo.fileIndex-1;
+		}
+
+		return {success: true};
+	}
+
+	protected JMP(line: string): Result{
 		let command = line.split(" ");
 		let destination = command[1];
 
@@ -503,18 +539,15 @@ export class LC3Simulator extends EventEmitter{
 		let whereTo:LC3Data | undefined = this.memory.get(this.registers[destIndex]);
 		if (whereTo === undefined){
 			return {success: false, message: "Attempting to jump to unregistered location in memory. Forcing simulation end."};
-		}else{
-			this.pc=whereTo.location.pc;
-			this.currentLine = whereTo.location.fileIndex;
-			
-			//NOTE: I don't know how to make the JMP properly execute and not mess up flow without this. (TODO way later)
-			this.interpretCommand(this.file.lineAt(this.currentLine).text);
 		}
+		
+		this.pc=whereTo.location.pc-1;
+		this.currentLine = whereTo.location.fileIndex-1;
 
 		return {success: true};
 	}
 	
-	private LD(line: string): Result{
+	protected LD(line: string): Result{
 		let command = line.split(" ");
 		let destinationS = command[1].substring(1, 2);
 		
@@ -531,10 +564,27 @@ export class LC3Simulator extends EventEmitter{
 
 		this.registers[registerIndex] = numerical ? numerical.machine : 0;
 
+		this.updateConditionCodes(registerIndex);
+
 		return {success: true};
 	}
 
-	private NOT(line: string): Result{
+	protected LDI(line: string): Result{
+		//Note: Edit Condition Codes
+		return {success: true};
+	}
+
+	protected LDR(line: string): Result{
+		//Note: Edit Condition Codes
+		return {success: true};
+	}
+
+	protected LEA(line: string): Result{
+		//Note: Edit Condition Codes
+		return {success: true};
+	}
+
+	protected NOT(line: string): Result{
 		let command = line.split(" ");
 		let destinationS = command[1].substring(1, 2);
 		let sourceS = command[2].substring(1,2);
@@ -551,13 +601,34 @@ export class LC3Simulator extends EventEmitter{
 
 		this.registers[destIndex] = ~this.registers[sourIndex];
 
+		this.updateConditionCodes(destIndex);
+
 		return {success: true}
+	}
+
+	protected TRAP(line: string): Result{
+		let command = line.split(" ");
+		let numerical = this.convertNumber(command[1].toLocaleUpperCase());
+
+		if (numerical == 0x20){ //GETC: Read one character
+			return {success: false, message: "TODO"};
+		} else if (numerical == 0x21){ //OUT: Output one character
+			return {success: false, message: "TODO"};
+		} else if (numerical == 0x22){ //PUTS: Output an entire string to console
+			return {success: false, message: "TODO"};
+		} else if (numerical == 0x23){ //IN: Read and echo one character
+			return {success: false, message: "TODO"};
+		} else if (numerical == 0x25){ //HALT: Stop computer
+			this.halted = true;
+		}
+
+		return {success: true};
 	}
 
 	//-----------------------HELPER FUNCTIONS-----------------------
 
 	//Requires All Upper Case input
-	private convertNumber(param: string): number{
+	protected convertNumber(param: string): number{
 		if (param.startsWith("X")){
 			param = "0x" + param.substring(1);
 			return Number(param);
@@ -572,11 +643,11 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	//Requires All Upper Case input
-	private startsWithCommand(line: string): boolean{
+	protected startsWithCommand(line: string): boolean{
 		if (line.startsWith("ADD ")) return true;
 		if (line.startsWith("AND ")) return true;
 
-		if (line.match(/BR[|nzp]/g)) return true;
+		if (line.match(/BR[|NZP]/g)) return true;
 		if (line.startsWith("JMP ")) return true;
 		if (line.startsWith("JSR ")) return true;
 		if (line.startsWith("JSRR ")) return true;
@@ -604,7 +675,7 @@ export class LC3Simulator extends EventEmitter{
 		return false;
 	}
 
-	private removeComment(line: string): string{
+	protected removeComment(line: string): string{
 		if (line.indexOf(";") >= 0){
 			return line.substring(0, line.indexOf(";"));
 		}
@@ -612,7 +683,25 @@ export class LC3Simulator extends EventEmitter{
 		return line;
 	}
 
-	private convertCommandToMachine(line: string): number{
+	protected convertCommandToMachine(line: string): number{
 		return 0b00;
+	}
+
+	protected updateConditionCodes(registerIndex: number){
+		if (this.registers[registerIndex] > 0xFFFF || this.registers[registerIndex] < -0xFFFF){
+			this.registers[registerIndex] %= 0xFFFF; //Wrap it around
+		}
+
+		this.condition_codes["N"] = false;
+		this.condition_codes["Z"] = false;
+		this.condition_codes["P"] = false;
+
+		if (this.registers[registerIndex] < 0){
+			this.condition_codes["N"] = true;
+		}else if (this.registers[registerIndex] > 0){
+			this.condition_codes["P"] = true;
+		}else{
+			this.condition_codes["Z"] = true;
+		}
 	}
 }
