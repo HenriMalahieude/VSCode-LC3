@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as DAP from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol/lib/debugProtocol";
-import { LC3Simulator, Result } from "./Simulator";
+import { LC3Simulator, Result, emptyLC3Data } from "./Simulator";
 import * as path from "path";
 
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
@@ -26,6 +26,9 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	private _debugger: LC3Simulator | undefined;
 	private outputChannel: vscode.OutputChannel;
+
+	private currentMemoryHead: number = 0x3000;
+	private memoryValueMax: number = 15;
 
 	private _addressesInHex = true;
 	private _valuesInHex = true;
@@ -173,23 +176,48 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request): Promise<void> {
-		//TODO: Memory/Searching memory
+		//TODO: Searching memory
 		if (this._debugger){
-			response.body = {
-				variables: [
-					{name: "R0", type: "integer", value: this.formatNumber(this._debugger.registers[0]), variablesReference: 0},
-					{name: "R1", type: "integer", value: this.formatNumber(this._debugger.registers[1]), variablesReference: 0},
-					{name: "R2", type: "integer", value: this.formatNumber(this._debugger.registers[2]), variablesReference: 0},
-					{name: "R3", type: "integer", value: this.formatNumber(this._debugger.registers[3]), variablesReference: 0},
-					{name: "R4", type: "integer", value: this.formatNumber(this._debugger.registers[4]), variablesReference: 0},
-					{name: "R5", type: "integer", value: this.formatNumber(this._debugger.registers[5]), variablesReference: 0},
-					{name: "R6", type: "integer", value: this.formatNumber(this._debugger.registers[6]), variablesReference: 0},
-					{name: "R7", type: "integer", value: this.formatNumber(this._debugger.registers[7]), variablesReference: 0},
-					{name: "PC", type: "integer", value: this.formatNumber(this._debugger.pc), variablesReference: 0},
-					{name: "PSR", type: "integer", value: this.formatNumber(this._debugger.psr), variablesReference: 0},
-					{name: "MCR", type: "integer", value: this.formatNumber(this._debugger.mcr), variablesReference: 0},
-				]
-			};
+			if (request && request.arguments) {	
+				if (request.arguments.variablesReference == 1){
+					response.body = {
+						variables: [
+							{name: "R0", type: "integer", value: this.formatNumber(this._debugger.registers[0]), variablesReference: 0},
+							{name: "R1", type: "integer", value: this.formatNumber(this._debugger.registers[1]), variablesReference: 0},
+							{name: "R2", type: "integer", value: this.formatNumber(this._debugger.registers[2]), variablesReference: 0},
+							{name: "R3", type: "integer", value: this.formatNumber(this._debugger.registers[3]), variablesReference: 0},
+							{name: "R4", type: "integer", value: this.formatNumber(this._debugger.registers[4]), variablesReference: 0},
+							{name: "R5", type: "integer", value: this.formatNumber(this._debugger.registers[5]), variablesReference: 0},
+							{name: "R6", type: "integer", value: this.formatNumber(this._debugger.registers[6]), variablesReference: 0},
+							{name: "R7", type: "integer", value: this.formatNumber(this._debugger.registers[7]), variablesReference: 0},
+							{name: "PC", type: "integer", value: this.formatNumber(this._debugger.pc), variablesReference: 0},
+							{name: "PSR", type: "integer", value: this.formatNumber(this._debugger.psr), variablesReference: 0},
+							{name: "MCR", type: "integer", value: this.formatNumber(this._debugger.mcr), variablesReference: 0},
+						]
+					};
+				}else{
+					let vArr = [];
+					for (let i = 0; i < this.memoryValueMax; i++){
+						let contents = this._debugger.memory.get(this.currentMemoryHead + i);
+						
+						let stringMachine: string;
+						if (contents == undefined) {
+							contents = emptyLC3Data();
+							stringMachine = contents.assembly + "(0x?)";
+						}else{
+							stringMachine = contents.assembly + " (" + String(this.formatNumber(contents.machine)) + ")";
+						}
+						
+						vArr.push({name: this.formatNumber(this.currentMemoryHead + i), type: "string", value: stringMachine, variablesReference: 0});
+					}
+
+					response.body = {
+						variables: []
+					}
+					response.body.variables = vArr;
+
+				}
+			}
 		}
 		this.sendResponse(response);
 	}
