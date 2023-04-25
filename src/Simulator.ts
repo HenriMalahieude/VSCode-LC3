@@ -19,10 +19,12 @@ export interface LC3Data{
 	location: Bit16Location;
 }
 
-export const emptyLC3Data: LC3Data = { //For Memory Traversal TODO
-	assembly: "",
-	machine: 0,
-	location: {fileIndex: 0, pc: 0x3000},
+export function emptyLC3Data(): LC3Data{
+	return {
+		assembly: "-",
+		machine: 0,
+		location: {fileIndex: 0, pc: 0x3000},
+	}
 }
 
 //TODO: Initialize PC to first .ORIG Encountered
@@ -34,8 +36,8 @@ export class LC3Simulator extends EventEmitter{
 	condition_codes = {"N": false, "Z": true, "P": false}; //TODO: See what the condition codes are initialized to in LC3Tools
 	memory: Map<number, LC3Data>;
 	pc: number = 0x2FFF;
-	psr: number = 0;
-	mcr: number = 0;
+	psr: number = 0; //TODO
+	mcr: number = 0; //TODO
 
 	public file: vscode.TextDocument | undefined;
 	protected currentLine: number = -1;
@@ -176,12 +178,12 @@ export class LC3Simulator extends EventEmitter{
 						if (Number.isNaN(currentLocation)){
 							return {success: false, message: "Could not convert number supplied to a valid location in memory.\n(Location must be specified in hex (x))", line: i};
 						}else if (currentLocation < 0x3000 || currentLocation > 0xFE00){
-							return {success: false, message: "Cannot populate program within system reserved memory\n(Reserved memory [0x0000 -> 0x3000) && (0xFE00 -> 0xFFFF])", line: i};
+							return {success: false, message: "Cannot populate program within system reserved memory\n(Reserved memory [0x0000, 0x3000) && (0xFE00, 0xFFFF])", line: i};
 						}
 	
-						if (command[1].startsWith("B") || command[1].startsWith("#")) this.emit("warning", {success: false, line: i, message: ".ORIG pseudo ops should provide number in hexdecimal format (x).", context: "Preprocessing Warning"})
+						if (command[1].startsWith("B") || command[1].startsWith("#")) this.warn({success: false, line: i, message: ".ORIG pseudo ops should provide number in hexdecimal format (x).", context: "Preprocessing Warning"})
 					}else{
-						return {success: false, message: "Did not specify where previous routine op codes ended. Please use '.end' to specify.", line: i};
+						return {success: false, message: "Did not specify where previous routine op codes ended. Please use '.end' to specify before '.orig'.", line: i};
 					}
 				}else{
 					return {success: false, line: i, message: "Incorrect amount of parameters given to .ORIG pseudo\n(Format expected: .ORIG x3000)"};
@@ -203,10 +205,7 @@ export class LC3Simulator extends EventEmitter{
 
 			//Variables
 			if (txt.match(/\s+.FILL\s+/gm) || txt.match(/\s+.STRINGZ\s+/gm) || txt.match(/\s+.BLKW\s+/gm)){
-				//TODO: Create a warning system that informs users of this
-				if (codeAllowed) {
-					this.emit("warning", {success: false, message: "Please avoid placing .FILL, .STRINGZ, or .BLKW before .END statement.", line: i, context: "Preprocessing Warning"});
-				}
+				if (!codeAllowed) return {success: false, message: "Cannot determine address. (Avoid placing .FILL, .STRINGZ, or .BLKW after .END statement)", line: i};
 
 				if (currentLocation <= -1) return {success: false, line: i, message: "Don't know where label is labelling."};
 
@@ -309,7 +308,7 @@ export class LC3Simulator extends EventEmitter{
 					subroutineMark = false;
 				}
 			}else{
-				return {success: false, line: i, message: "Missing location to place opcodes at. (.ORIG x3000?)"};
+				return {success: false, line: i, message: "Missing location to place opcodes at.\n(.ORIG x3000?)"};
 			}
 			
 			//Otherwise, it's a command/opcode and we just record it into memory
@@ -379,23 +378,23 @@ export class LC3Simulator extends EventEmitter{
 		}else if (manip.startsWith("LD ")){
 			return this.LD(manip);
 		}else if (manip.startsWith("LDI ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.LDI(manip);
 		}else if (manip.startsWith("LDR ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.LDR(manip);
 		}else if (manip.startsWith("LEA ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.LEA(manip);
 		}else if (manip.startsWith("NOT ")){
 			return this.NOT(manip);
 		}else if (manip.startsWith("RTI ")){
 			return {success: false, message: "TODO"}; //TODO
 		}else if (manip.startsWith("ST ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.ST(manip);
 		}else if (manip.startsWith("STI ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.STI(manip);
 		}else if (manip.startsWith("STR ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.STR(manip);
 		}else if (manip.startsWith("TRAP ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.TRAP(manip);
 		}
 
 		return {success: false, message: "Couldn't understand line. Is that a valid OPCode?"};
@@ -572,7 +571,7 @@ export class LC3Simulator extends EventEmitter{
 
 		let addr = this.labelLocations.get(command[2]);
 		if (!addr){
-			return {success: false, message: "Attempted to get locate non-existent label."}
+			return {success: false, message: "Attempted to locate non-existent label."}
 		}
 		let numerical = this.memory.get(addr.pc);
 
@@ -584,17 +583,103 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	protected LDI(line: string): Result{
-		//Note: Edit Condition Codes
+		let command = line.split(" ");
+		let destinationS = command[1].substring(1, 2);
+
+		let registerIndex = Number(destinationS);//Get R#
+		if (!command[1].startsWith("R") || Number.isNaN(registerIndex) || registerIndex > 7 || registerIndex < 0){
+			return {success: false, message: "Destination Register is NaN or out of bounds."};
+		}
+
+		let whereTo = this.removeComment(command[2]);
+		let loc = this.labelLocations.get(whereTo)
+		let numerical:number = 0xffff + 1;
+		
+		if (loc != undefined){
+			let data = this.memory.get(loc.pc)
+
+			if (data != undefined){
+				if (data.machine > 0xFFE0 || data.machine < 0x3000) return {success: false, message: "Attempted to load system reserved memory."};
+
+				let savedAddr = data.machine
+				data = this.memory.get(savedAddr);
+
+				if (data != undefined){
+					numerical = data.machine;
+				}else{
+					numerical = 0;
+					this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
+					this.memory.set(savedAddr, {assembly: "", machine: 0, location: {pc: savedAddr, fileIndex: -1}});
+				}
+			}else{
+				return {success: false, message: "Label not registered in memory, but registered in system?"};
+			}
+		}else{
+			return {success: false, message: "Attempted to use an unregistered label location."};
+		}
+
+		this.registers[registerIndex] = numerical;
+		this.updateConditionCodes(registerIndex);
+
 		return {success: true};
 	}
 
 	protected LDR(line: string): Result{
-		//Note: Edit Condition Codes
+		let command = line.split(" ");
+		let destinationS1 = command[1].substring(1, 2);
+		let destinationS2 = command[2].substring(1, 2);
+
+		let registerIndex1 = Number(destinationS1);//Get R#
+		if (!command[1].startsWith("R") || Number.isNaN(registerIndex1) || registerIndex1 > 7 || registerIndex1 < 0){
+			return {success: false, message: "Destination Register is NaN or out of bounds."};
+		}
+
+		let registerIndex2 = Number(destinationS2);
+		if (!command[2].startsWith("R") || Number.isNaN(registerIndex2) || registerIndex2 > 7 || registerIndex2 < 0){
+			return {success: false, message: "Source Register is NaN or out of bounds."};
+		}
+
+		let numerical = this.convertNumber(command[3]);
+		if (!this.bitLimit(numerical, 6)) return {success: false, message: "Offset not within 6 bit limit\n[-32, 31]"};
+		
+		let address = this.registers[registerIndex2] + numerical;
+		if (address < 0x3000 || address > 0xFE00) return {success: false, message: "Attempted to load system reserved memory."};
+
+		let data = this.memory.get(address);
+		if (!data) {
+			data = emptyLC3Data();
+			data.machine = 0;
+			this.memory.set(address, {assembly: "", machine: 0, location: {pc: address, fileIndex: -1}});
+			this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
+		}
+
+		this.registers[registerIndex1] = data.machine;
+		this.updateConditionCodes(registerIndex1);
+
 		return {success: true};
 	}
 
 	protected LEA(line: string): Result{
-		//Note: Edit Condition Codes
+		let command = line.split(" ");
+		let destinationS = command[1].substring(1, 2);
+
+		let registerIndex = Number(destinationS);//Get R#
+		if (!command[1].startsWith("R") || Number.isNaN(registerIndex) || registerIndex > 7 || registerIndex < 0){
+			return {success: false, message: "Destination Register is NaN or out of bounds."};
+		}
+
+		let whereTo = this.removeComment(command[2]);
+		let loc = this.labelLocations.get(whereTo)
+		let numerical:number = 0;
+		if (loc != undefined){
+			numerical = loc.pc;
+		}else{
+			return {success: false, message: "Attempted to use an unregistered label location."};
+		}
+
+		this.registers[registerIndex] = numerical;
+		this.updateConditionCodes(registerIndex);
+
 		return {success: true};
 	}
 
@@ -617,7 +702,102 @@ export class LC3Simulator extends EventEmitter{
 
 		this.updateConditionCodes(destIndex);
 
-		return {success: true}
+		return {success: true};
+	}
+
+	protected ST(line: string): Result{
+		let command = line.split(" ");
+		let destinationS = command[1].substring(1, 2);
+		
+		let registerIndex = Number(destinationS);//Get R#
+		if (!command[1].startsWith("R") || Number.isNaN(registerIndex) || registerIndex > 7 || registerIndex < 0){
+			return {success: false, message: "Source Register is NaN or out of bounds."};
+		}
+
+		let addr = this.labelLocations.get(command[2]);
+		if (!addr){
+			return {success: false, message: "Attempted to locate non-existent label."}
+		}
+
+		let data: LC3Data | undefined = this.memory.get(addr.pc);
+		if (data == undefined){
+			data = emptyLC3Data();
+			this.memory.set(addr.pc, {assembly: "", machine: 0, location: addr});
+			this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
+		}
+
+		data.machine = this.registers[registerIndex];
+		this.memory.set(addr.pc, data);
+
+		return {success: true};
+	}
+
+	protected STI(line: string): Result{
+		let command = line.split(" ");
+		let destinationS = command[1].substring(1, 2);
+		
+		let registerIndex = Number(destinationS);//Get R#
+		if (!command[1].startsWith("R") || Number.isNaN(registerIndex) || registerIndex > 7 || registerIndex < 0){
+			return {success: false, message: "Destination Register is NaN or out of bounds."};
+		}
+
+		let addr = this.labelLocations.get(command[2]);
+		if (!addr){
+			return {success: false, message: "Attempted to locate non-existent label."}
+		}
+
+		let data: LC3Data | undefined = this.memory.get(addr.pc);
+		if (data == undefined){
+			return {success: false, message: "Attempted to use 0x0000 as pointer/address.\n(Is that memory location registered?)"};
+		}
+
+		let savedAddr = data.machine
+		data = this.memory.get(savedAddr);
+
+		if (data == undefined){
+			data = emptyLC3Data();
+			this.memory.set(savedAddr, {assembly: "", machine: 0, location: {pc: savedAddr, fileIndex: -1}});
+			this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
+		}
+
+		data.machine = this.registers[registerIndex];
+		this.memory.set(savedAddr, data);
+
+		return {success: true};
+	}
+
+	protected STR(line: string): Result{
+		let command = line.split(" ");
+		let sourceS = command[1].substring(1, 2);
+		let destinationS2 = command[2].substring(1, 2);
+
+		let registerIndex1 = Number(sourceS);//Get R#
+		if (!command[1].startsWith("R") || Number.isNaN(registerIndex1) || registerIndex1 > 7 || registerIndex1 < 0){
+			return {success: false, message: "Source Register is NaN or out of bounds."};
+		}
+
+		let registerIndex2 = Number(destinationS2);
+		if (!command[2].startsWith("R") || Number.isNaN(registerIndex2) || registerIndex2 > 7 || registerIndex2 < 0){
+			return {success: false, message: "Destination Register is NaN or out of bounds."};
+		}
+
+		let numerical = this.convertNumber(command[3]);
+		if (!this.bitLimit(numerical, 6)) return {success: false, message: "Offset not within 6 bit limit\n[-32, 31]"};
+		
+		let address = this.registers[registerIndex2] + numerical;
+		if (address < 0x3000 || address > 0xFE00) return {success: false, message: "Attempted to set system reserved memory."};
+
+		let data = this.memory.get(address);
+		if (data == undefined){
+			data = emptyLC3Data();
+			this.memory.set(address, {assembly: "", machine: 0, location: {pc: address, fileIndex: -1}});
+			this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
+		}
+
+		data.machine = this.registers[registerIndex1];
+		this.memory.set(address, data);
+		
+		return {success: true};
 	}
 
 	protected TRAP(line: string): Result{
@@ -702,7 +882,7 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	protected updateConditionCodes(registerIndex: number){
-		if (this.registers[registerIndex] > 0xFFFF || this.registers[registerIndex] < -0xFFFF){
+		if (this.registers[registerIndex] > 0xFFFF || this.registers[registerIndex] < -0x7FFF){
 			this.registers[registerIndex] %= 0xFFFF; //Wrap it around
 		}
 
@@ -728,7 +908,12 @@ export class LC3Simulator extends EventEmitter{
 		return true;
 	}
 
+	//Assuming that number is between -0x7FFF to 0x7FFE
 	protected convertToUnsigned(n: number): number{
 		return n >= 0 ? n : 0xFFFF - n;
+	}
+
+	protected warn(r: Result){
+		this.emit("warning", r);
 	}
 }
