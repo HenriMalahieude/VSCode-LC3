@@ -18,6 +18,9 @@ export class SimulationTester extends Sim.LC3Simulator {
 				console.log("\t\tFailed " + name +"\n\t\t\tInfo: " + item.message + "\n");
 			}
 		}
+
+		console.log("\tPreprocessor Test");
+		check("Preprocess", this.testPreprocess());
 		
 		console.log("\tOp-Code Test");
 		
@@ -39,6 +42,11 @@ export class SimulationTester extends Sim.LC3Simulator {
 		check("TRAP", this.testTRAP());
 
 		console.log("Simulator Test Suite Success: (" + (testState["TOTAL"] - testState["FAIL"]) + "/" + testState["TOTAL"] + ")")
+	}
+
+	private testPreprocess(): Sim.Result{
+
+		return {success: false, message: "TODO"};
 	}
 
 	private testADD(): Sim.Result{
@@ -109,13 +117,54 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	private testBR(): Sim.Result{
+		this.resetSimulationState();
+		this.memory.set(0x3000, {assembly: "", machine: 0, location: {pc: 0x3000, fileIndex: 0}});
+		this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: 0});
+		this.condition_codes = {"N": true, "Z": false, "P": false};
+		
+		this.pc = 0;
+		let test0 = this.BR("BRN TEST");
+		if (!test0.success) return test0;
+		if (this.pc != 0x2FFF) return {success: false, message: "BR failed Negative Jump"};
 
-		return {success: false, message: "TODO"};
+		this.pc = 0;
+		this.condition_codes = {"N": false, "Z": true, "P": false};
+		let test1 = this.BR("BRZ TEST");
+		if (!test1.success) return test1;
+		if (this.pc != 0x2FFF) return {success: false, message: "BR failed Zero Jump"};
+
+		this.pc = 0;
+		this.condition_codes = {"N": false, "Z": false, "P": true};
+		let test2 = this.BR("BRP TEST");
+		if (!test2.success) return test2;
+		if (this.pc != 0x2FFF) return {success: false, message: "BR failed Positive Jump"};
+
+		this.pc = 0;
+		this.condition_codes = {"N": false, "Z": false, "P": false};
+		let test3 = this.BR("BRNZP TEST");
+		if (!test3.success) return test3;
+		if (this.pc == 0x2FFF) return {success: false, message: "BR failed no Jump"};
+
+		this.resetSimulationState();
+		this.condition_codes = {"N": false, "Z": false, "P": false};
+		let test4 = this.BR("BRNZP TEST");
+		if (test4.success) return {success: false, message: "BR jumped to undefined location in memory."};
+
+		return {success: true};
 	}
 
 	private testJMP(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			let register = "R"+String(i);
+			this.registers[i] = 0x3000;
+			this.memory.set(0x3000, {assembly: "", machine: 0, location: {pc:0x3000, fileIndex: 0}});
+			let test0 = this.JMP("JMP " + register);
+			if (!test0.success) return test0;
+			if (this.pc != 0x2FFF) return {success: false, message: "Failed Register JMP"};
+		}
 
-		return {success: false, message: "TODO"};
+		return {success: true};
 	}
 
 	private testJSR(): Sim.Result{
@@ -211,6 +260,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		this.halted = false;
 		
 		this.registers = [0, 0, 0, 0, 0, 0, 0, 0];
+		this.condition_codes = {"N": false, "Z": true, "P": false};
 		this.memory.clear();
 		this.pc = 0x2FFF;
 		this.psr = 0;
