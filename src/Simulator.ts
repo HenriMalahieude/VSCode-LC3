@@ -27,7 +27,6 @@ export function emptyLC3Data(): LC3Data{
 	}
 }
 
-//TODO: Initialize PC to first .ORIG Encountered
 export class LC3Simulator extends EventEmitter{
 	status: Result = {success: true};
 	halted: boolean = false;
@@ -173,6 +172,11 @@ export class LC3Simulator extends EventEmitter{
 				if (command.length == 2){
 					if (!codeAllowed){
 						currentLocation = this.convertNumber(command[1]);
+						if (currentLocation < this.pc){
+							this.pc = currentLocation - 1;
+							this.currentLine = i-1;
+						}
+
 						subroutineMark = true;
 						codeAllowed = true;
 						if (Number.isNaN(currentLocation)){
@@ -183,7 +187,7 @@ export class LC3Simulator extends EventEmitter{
 	
 						if (command[1].startsWith("B") || command[1].startsWith("#")) this.warn({success: false, line: i, message: ".ORIG pseudo ops should provide number in hexdecimal format (x).", context: "Preprocessing Warning"})
 					}else{
-						return {success: false, message: "Did not specify where previous routine op codes ended. Please use '.end' to specify before '.orig'.", line: i};
+						return {success: false, message: "Did not specify where previous routine op codes ended. Please use '.end' to specify end before another '.orig'.", line: i};
 					}
 				}else{
 					return {success: false, line: i, message: "Incorrect amount of parameters given to .ORIG pseudo\n(Format expected: .ORIG x3000)"};
@@ -573,6 +577,9 @@ export class LC3Simulator extends EventEmitter{
 		if (!addr){
 			return {success: false, message: "Attempted to locate non-existent label."}
 		}
+
+		if (!this.bitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LD [-256, 255])"};
+
 		let numerical = this.memory.get(addr.pc);
 
 		this.registers[registerIndex] = numerical ? numerical.machine : 0;
@@ -596,6 +603,9 @@ export class LC3Simulator extends EventEmitter{
 		let numerical:number = 0xffff + 1;
 		
 		if (loc != undefined){
+
+			if (!this.bitLimit(loc.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LDI [-256, 255])"};
+
 			let data = this.memory.get(loc.pc)
 
 			if (data != undefined){
@@ -677,6 +687,8 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Attempted to use an unregistered label location."};
 		}
 
+		if (!this.bitLimit(loc.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LEA [-256, 255])"};
+
 		this.registers[registerIndex] = numerical;
 		this.updateConditionCodes(registerIndex);
 
@@ -719,6 +731,8 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Attempted to locate non-existent label."}
 		}
 
+		if (!this.bitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from ST [-256, 255])"};
+
 		let data: LC3Data | undefined = this.memory.get(addr.pc);
 		if (data == undefined){
 			data = emptyLC3Data();
@@ -745,6 +759,8 @@ export class LC3Simulator extends EventEmitter{
 		if (!addr){
 			return {success: false, message: "Attempted to locate non-existent label."}
 		}
+
+		if (!this.bitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LD [-256, 255])"};
 
 		let data: LC3Data | undefined = this.memory.get(addr.pc);
 		if (data == undefined){
@@ -899,6 +915,7 @@ export class LC3Simulator extends EventEmitter{
 		}
 	}
 
+	//False if out of bounds of limit
 	protected bitLimit(n: number, limit:number): boolean{
 		let posLim:number = (Math.pow(2, limit-1)) - 1;
 		let negLim = -1 * (Math.pow(2, limit-1));
