@@ -234,7 +234,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
 		if (this._debugger){
-			let info: Result = this._debugger.run();
+			let info: Result = this._debugger.run(); //TODO
 			if (info.success === false){
 				response.success = false;
 				return this.sendFormattedErrorMessage(response, this._debugger.status);
@@ -245,7 +245,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
 		if (this._debugger){
-			let info: Result = this._debugger.stepOver(true);
+			let info: Result = this._debugger.stepOver(true); //TODO: Switch Step Over and Step In
 			//console.log(info)
 			if (info.success === false){
 				response.success = false;
@@ -258,7 +258,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
 		if (this._debugger){
-			let info: Result = this._debugger.stepIn(true);
+			let info: Result = this._debugger.stepIn(true); //TODO
 			if (info.success === false){
 				response.success = false;
 				return this.sendFormattedErrorMessage(response, this._debugger.status);
@@ -270,7 +270,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments, request?: DebugProtocol.Request | undefined): void {
 		if (this._debugger){
-			let info: Result = this._debugger.stepOut(true);
+			let info: Result = this._debugger.stepOut(true); //TODO
 			if (info.success == false){
 				response.success = false;
 				return this.sendFormattedErrorMessage(response, this._debugger.status);
