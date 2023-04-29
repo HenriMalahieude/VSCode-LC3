@@ -178,23 +178,91 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	private testLD(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			this.memory.set(0x3000, {assembly: "", machine: 1234, location: {pc: 0x3000, fileIndex: -1}});
+			this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: -1});
+			let register = "R"+String(i);
+			let test0 = this.LD("LD " + register + ", TEST");
+			if (!test0.success) return test0;
+			if (this.registers[i] != 1234) return {success: false, message: register + " failed LD of 1234 for label TEST"};
+		}
 
-		return {success: false, message: "TODO"};
+		this.resetSimulationState();
+		this.memory.set(0x5000, {assembly: "", machine: 1234, location: {pc: 0x5000, fileIndex: -1}});
+		this.labelLocations.set("TEST", {pc: 0x5000, fileIndex: -1});
+		this.pc = 0x3000;
+		let test1 = this.LD("LD R0, TEST")
+		if (test1.success || this.registers[0] == 1234) return {success: false, message: "Failed LD 9bit limit"};
+
+		return {success: true};
 	}
 
 	private testLDI(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
+			this.memory.set(0x3001, {assembly: "", machine: 1234, location: {pc: 0x3001, fileIndex: -1}})
+			this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: -1});
+			let register = "R"+String(i);
+			let test0 = this.LDI("LDI " + register + ", TEST");
+			if (!test0.success) return test0;
+			if (this.registers[i] != 1234) return {success: false, message: register + " failed LDI of 1234 for label TEST"};
+		}
 
-		return {success: false, message: "TODO"};
+		this.resetSimulationState();
+		this.memory.set(0x5000, {assembly: "", machine: 0x5001, location: {pc: 0x5000, fileIndex: -1}});
+		this.memory.set(0x5001, {assembly: "", machine: 1234, location: {pc: 0x5001, fileIndex: -1}})
+		this.labelLocations.set("TEST", {pc: 0x5000, fileIndex: -1});
+		this.pc = 0x3000;
+		let test1 = this.LDI("LDI R0, TEST")
+		if (test1.success || this.registers[0] == 1234) return {success: false, message: "Failed LDI 9bit limit"};
+
+		return {success: true};
 	}
 
 	private testLDR(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
+			this.memory.set(0x3001, {assembly: "", machine: 1234, location: {pc: 0x3001, fileIndex: -1}})
+			
+			let r1Index = i;
+			let r2Index = (i+1) % 8
 
-		return {success: false, message: "TODO"};
+			this.registers[r2Index] = 0x3000
+
+			let register1 = "R"+String(r1Index);
+			let register2 = "R"+String(r2Index);
+			let test0 = this.LDR("LDR " + register1 + ", " + register2 + ", #0");
+			if (!test0.success) return test0;
+			if (this.registers[r1Index] != 0x3001) return {success: false, message: register1 + " failed LDR #0 of 0x3001 from " + register2};
+
+			let test1 = this.LDR("LDR " + register1 + ", " + register2 + ", #1");
+			if (!test1.success) return test1;
+			if (this.registers[r1Index] != 1234) return {success: false, message: register1 + " failed LDR #1 of 1234 from " + register2};
+		}
+
+		return {success: true};
 	}
 
 	private testLEA(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: -1});
+			let register = "R"+String(i);
+			let test0 = this.LEA("LEA " + register + ", TEST");
+			if (!test0.success) return test0;
+			if (this.registers[i] != 0x3000) return {success: false, message: register + " failed LEA for label TEST at 0x3000"};
+		}
 
-		return {success: false, message: "TODO"};
+		this.resetSimulationState();
+		this.labelLocations.set("TEST", {pc: 0x5000, fileIndex: -1});
+		this.pc = 0x3000;
+		let test1 = this.LEA("LEA R0, TEST")
+		if (test1.success || this.registers[0] == 0x5000) return {success: false, message: "Failed LEA 9bit limit"};
+
+		return {success: true};
 	}
 
 	private testNOT(): Sim.Result{
@@ -226,18 +294,73 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	private testST(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			this.memory.set(0x3000, {assembly: "", machine: 1234, location: {pc: 0x3000, fileIndex: -1}});
+			this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: -1});
+			let register = "R"+String(i);
+			let test0 = this.ST("ST " + register + ", TEST");
+			if (!test0.success) return test0;
+			if (this.memory.get(0x3000)?.machine == 1234) return {success: false, message: register + " failed ST of 1234 for label TEST"};
+		}
 
-		return {success: false, message: "TODO"};
+		this.resetSimulationState();
+		this.memory.set(0x5000, {assembly: "", machine: 1234, location: {pc: 0x5000, fileIndex: -1}});
+		this.labelLocations.set("TEST", {pc: 0x5000, fileIndex: -1});
+		this.pc = 0x3000;
+		let test1 = this.ST("ST R0, TEST")
+		if (test1.success || this.memory.get(0x5000)?.machine != 1234) return {success: false, message: "Failed ST 9bit limit (" + test1.success + " " + this.memory.get(0x5000)?.machine + ")"};
+
+		return {success: true};
 	}
 
 	private testSTI(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
+			this.memory.set(0x3001, {assembly: "", machine: 1234, location: {pc: 0x3001, fileIndex: -1}})
+			this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: -1});
+			let register = "R"+String(i);
+			let test0 = this.STI("STI " + register + ", TEST");
+			if (!test0.success) return test0;
+			if (this.memory.get(0x3001)?.machine == 1234) return {success: false, message: register + " failed STI of 1234 for label TEST"};
+		}
 
-		return {success: false, message: "TODO"};
+		this.resetSimulationState();
+		this.memory.set(0x5000, {assembly: "", machine: 0x5001, location: {pc: 0x5000, fileIndex: -1}});
+		this.memory.set(0x5001, {assembly: "", machine: 1234, location: {pc: 0x5001, fileIndex: -1}})
+		this.labelLocations.set("TEST", {pc: 0x5000, fileIndex: -1});
+		this.pc = 0x3000;
+		let test1 = this.STI("STI R0, TEST")
+		if (test1.success || this.memory.get(0x5001)?.machine != 1234) return {success: false, message: "Failed STI 9bit limit"};
+
+		return {success: true};
 	}
 
 	private testSTR(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
+			this.memory.set(0x3001, {assembly: "", machine: 1234, location: {pc: 0x3001, fileIndex: -1}})
+			
+			let r1Index = i;
+			let r2Index = (i+1) % 8
 
-		return {success: false, message: "TODO"};
+			this.registers[r2Index] = 0x3000;
+
+			let register1 = "R"+String(r1Index);
+			let register2 = "R"+String(r2Index);
+			let test0 = this.STR("STR " + register1 + ", " + register2 + ", #0");
+			if (!test0.success) return test0;
+			if (this.memory.get(0x3000)?.machine == 0x3001) return {success: false, message: register1 + " failed STR #0 of 0 to " + register2};
+			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
+
+			let test1 = this.STR("STR " + register1 + ", " + register2 + ", #1");
+			if (!test1.success) return test1;
+			if (this.memory.get(0x3001)?.machine == 1234) return {success: false, message: register1 + " failed STR #1 of 0 to " + register2};
+		}
+
+		return {success: true};
 	}
 
 	private testTRAP(): Sim.Result{
