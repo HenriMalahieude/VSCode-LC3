@@ -1,32 +1,21 @@
 .orig x3000
 
 LD R0, VAR_1
-AND R0, R0, #0
-
-;Simple multiplication by 2
-Position ADD R0, R0, #1
-		 ADD R0, R0, R0
-		 ADD R0, R0, R0
-
-;Put it back to zero
-AND R0, R0, #0
-
-;This will be testing the NOT
-ADD R0, R0, #5
-
-;Negate the number
-NOT R0, R0
-ADD R0, R0, #1
-
-;This should result in zero
-ADD R0, R0, #5
-
 AND R1, R1, #0
-ADD R1, R1, x3001
-JMP R1
+ADD R1, R1, #-1
+
+LD R6, PTR2
+JSRR R6
 
 HALT
+
+VAR_1 .FILL x000A
+VAR_2 .FILL x0001
+PTR2 .FILL x4000
 .end
-VAR_1 .FILL #500
-VAR_2 .STRINGZ "Word"
-VAR_# .BLKW 2
+
+.orig x4000
+ADD R1, R1, #1
+RET
+PTR .FILL x3005
+.end
