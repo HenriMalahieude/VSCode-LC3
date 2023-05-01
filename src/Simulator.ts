@@ -34,7 +34,7 @@ export class LC3Simulator extends EventEmitter{
 	registers: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
 	condition_codes = {"N": false, "Z": true, "P": false}; //TODO: See what the condition codes are initialized to in LC3Tools
 	memory: Map<number, LC3Data>;
-	pc: number = 0x2FFF;
+	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the current command instead of the next
 	psr: number = 0; //TODO
 	mcr: number = 0; //TODO
 
@@ -208,7 +208,7 @@ export class LC3Simulator extends EventEmitter{
 			}
 
 			//Variables
-			if (txt.match(/\s+.FILL\s+/gm) || txt.match(/\s+.STRINGZ\s+/gm) || txt.match(/\s+.BLKW\s+/gm)){
+			if (txt.match(/\s.FILL\s+/gm) || txt.match(/\s.STRINGZ\s+/gm) || txt.match(/\s.BLKW\s+/gm)){
 				if (!codeAllowed) return {success: false, message: "Cannot determine address. (Avoid placing .FILL, .STRINGZ, or .BLKW after .END statement)", line: i};
 
 				if (currentLocation <= -1) return {success: false, line: i, message: "Don't know where label is labelling."};
@@ -217,7 +217,7 @@ export class LC3Simulator extends EventEmitter{
 
 				if (this.startsWithCommand(txt)) return {success: false, message: "Cannot start .FILL, .STRINGZ, or .BLKW with opcode", line: i};
 
-				if (txt.match(/\s+.FILL\s+/gm)){ //Single Variables
+				if (txt.match(/\s.FILL\s+/gm)){ //Single Variables
 					let numerical = this.convertNumber(command[2]);
 					if (Number.isNaN(numerical)) return {success: false, line: i, message: "Number provided is not hex (x), bin (b), or decimal (#)"};
 
@@ -229,7 +229,7 @@ export class LC3Simulator extends EventEmitter{
 	
 					this.memory.set(currentLocation, ll);
 					this.labelLocations.set(command[0], {pc: currentLocation, fileIndex: i-1});
-				} else if (txt.match(/\s+.STRINGZ\s+/gm)){ //Strings
+				} else if (txt.match(/\s.STRINGZ\s+/gm)){ //Strings
 					let ss = command[2].replaceAll(/"/gm, "");
 					let ll: LC3Data = {
 						assembly: ss.at(0),
@@ -259,7 +259,7 @@ export class LC3Simulator extends EventEmitter{
 							location: {pc: currentLocation, fileIndex: -1},
 						}) //Remembering the zero section
 
-				} else if (txt.match(/\s+.BLKW\s+/gm)){ //Array/Blocking
+				} else if (txt.match(/\s.BLKW\s+/gm)){ //Array/Blocking
 					let ll: LC3Data = {
 						assembly: command[0] + " BLKW 0",
 						machine: 0,
@@ -347,7 +347,8 @@ export class LC3Simulator extends EventEmitter{
 		}
 
 		//Run this again incase of Pseudo operator .FILL or .STRINGZ or .BLKW
-		if (manip.startsWith(".") || manip.startsWith(";") || manip.length <= 0) return {success: true};
+		if (manip.startsWith(".")) return {success: false, message: "Reached a pseudo-op. Preventing undefined behavior, forcing simulation end."};
+		if (manip.startsWith(";") || manip.length <= 0) return {success: true};
 
 		this.pc++;
 		//Macros
@@ -376,9 +377,9 @@ export class LC3Simulator extends EventEmitter{
 		}else if (manip.startsWith("JMP ")){
 			return this.JMP(manip);
 		}else if (manip.startsWith("JSR ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.JSR(manip);
 		}else if (manip.startsWith("JSRR ")){
-			return {success: false, message: "TODO"}; //TODO
+			return this.JSRR(manip);
 		}else if (manip.startsWith("LD ")){
 			return this.LD(manip);
 		}else if (manip.startsWith("LDI ")){
@@ -562,6 +563,54 @@ export class LC3Simulator extends EventEmitter{
 		this.currentLine = whereTo.location.fileIndex-1;
 
 		return {success: true};
+	}
+
+	protected JSR(line: string): Result{
+		let command = line.split(" ");
+		let destination = command[1];
+
+		let loc = this.labelLocations.get(destination);
+		if (loc == undefined){
+			return {success: false, message: "Attempting to jump to unregistered location in memory. Forcing simulation end."};
+		}
+
+		if (!this.bitLimit(loc.pc - this.pc, 11)) return {success: false, message: "Label does not fit within 9 bit limit.\n[-256, 255]"};
+
+		let savePc = this.pc+1;
+		this.registers[7] = savePc;
+
+		this.pc = loc.pc-1;
+		this.currentLine = loc.fileIndex-1;
+
+		return {success: true}
+	}
+
+	protected JSRR(line: string): Result{
+		let command = line.split(" ");
+		let destinationS = command[1].substring(1, 2);
+
+		let destIndex = Number(destinationS);
+		if (!command[1].startsWith("R") || Number.isNaN(destIndex) || destIndex < 0 || destIndex > 7){
+			return {success: false, message: "First Source Register is NaN or out of bounds."}
+		}
+
+		let addr = this.registers[destIndex];
+		if (addr > 0xfe00 || addr < 0x3000){
+			return {success: false, message: "Attempting to jump to system reserved memory without System Priviliges. Forcing simulation end."};
+		}
+
+		let whereTo = this.memory.get(addr);
+		if (whereTo == undefined || whereTo.location.fileIndex < 0){
+			return {success: false, message: "Attempting to jump to unregistered location in memory. Forcing simulation end."};
+		}
+
+		let savePc = this.pc+1;
+		this.registers[7] = savePc;
+
+		this.pc = whereTo.location.pc-1;
+		this.currentLine = whereTo.location.fileIndex-1;
+
+		return {success: true}
 	}
 	
 	protected LD(line: string): Result{
@@ -868,8 +917,6 @@ export class LC3Simulator extends EventEmitter{
 		if (line.startsWith("LEA ")) return true;
 
 		if (line.startsWith("NOT ")) return true;
-
-		if (line.startsWith("RET ")) return true;
 		if (line.startsWith("RTI ")) return true;
 		
 		if (line.startsWith("ST ")) return true;
@@ -881,6 +928,7 @@ export class LC3Simulator extends EventEmitter{
 		if (line.match(/\s*HALT\s*/gm)) return true;
 		if (line.match(/\s*PUTC\s*/gm)) return true;
 		if (line.match(/\s*GETC\s*/gm)) return true;
+		if (line.match(/\s*RET\s*/gm)) return true;
 
 		return false;
 	}
