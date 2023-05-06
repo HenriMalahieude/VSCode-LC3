@@ -45,8 +45,67 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	private testPreprocess(): Sim.Result{
+		function smallTestor(obj:SimulationTester, ...file: string[]): Sim.Result{
+			obj.resetSimulationState();
+			return obj.preprocess(file)
+		}
+		
+		let test0 = smallTestor(this, ".END")
+		if (test0.success) return {success: false, message: "Failed the .Orig missing test"};
 
-		return {success: false, message: "TODO"};
+		let test1 = smallTestor(this, ".ORIG x2000")
+		if (test1.success) return {success: false, message: "Failed reserved system memory test 1"}
+
+		let test2 = smallTestor(this, ".ORIG xFF00")
+		if (test2.success) return {success: false, message: "Failed reserved system memory test 2"}
+
+		let test3 = smallTestor(this, ".ORIG x3000")
+		if (test3.success) return {success: false, message: "Failed .end missing"};
+
+		let test4 = smallTestor(this, ".ORIG x3000", "AND R0, R0, #0", ".END")
+		if (!test4.success) return test4;
+		let item = this.memory.get(0x3000)
+		if (item == undefined) return {success: false, message: "Missing Command For Test 4"};
+		if (!item || item.assembly != "AND R0, R0, #0" || item.location.pc != 0x3000) return {success: false, message: "Incorrectly formatted memory entry for Test 4"}
+
+		let test5 = smallTestor(this, ".ORIG x3000", "AND R0, R0, #0", ".END", ".ORIG x4000", "AND R0, R0, #0", ".END")
+		if (!test5.success) return test5;
+		if (this.memory.get(0x3000) == undefined) return {success: false, message: "Missing Command 1 For Test 5"}
+		if (this.memory.get(0x4000) == undefined) return {success: false, message: "Missing Command 2 For Test 5"}
+
+		//Mega Pseudo Tester
+		let test6 = smallTestor(this, ".ORIG x3000", "LD R0, TEST", "HALT", "TEST .FILL #0", "TEST1 .STRINGZ \"Hello, World!\"", "TEST2 .BLKW 10", ".END")
+		if (!test6.success) return test6;
+		
+		let labelTest1 = this.labelLocations.get("TEST")
+		if (labelTest1 == undefined) return {success: false, message: "Failed label location setting 1"}
+		if (labelTest1.pc != 0x3002) return {success: false, message: "Failed correctly setting label location 1"}
+		
+		let labelTest2 = this.labelLocations.get("TEST1")
+		if (labelTest2 == undefined) return {success: false, message: "Failed label location setting 2"}
+		if (labelTest2.pc != 0x3003) return {success: false, message: "Failed correctly setting label location 2"}
+		for (let i = 0; i <= "Hello, World!".length; i++){
+			let mem = this.memory.get(0x3003 + i)
+			if (mem == undefined) return {success: false, message: "Missing string entry: " + String(i)}
+			if (i < "Hello, World!".length){
+				let comp = "Hello, World!".at(i);
+				if (mem.assembly != comp || mem.machine != comp?.charCodeAt(0)) return {success: false, message: "Incorrectly formatted stringz at " + String(i) + ": [" + mem.assembly + "("+ String(mem.machine) +") vs " + comp + "(" + String(comp?.charCodeAt(0)) +")]"}
+			}else{ //Test Null Character
+				if (mem.assembly != "\0" || mem.machine != 0) return {success: false, message: "Stringz missing null character."}
+			}
+		}
+
+		let labelTest3 = this.labelLocations.get("TEST2")
+		if (labelTest3 == undefined) return {success: false, message: "Failed label location setting 3"}
+		if (labelTest3.pc != (0x3003 + 14)) return {success: false, message: "Failed correctly setting label location 3"}
+		for (let i = 0; i < 10; i++){
+			let mem = this.memory.get(0x3003 + 14 + i)
+			if (mem == undefined) return {success: false, message: "Incorrectly formatted BLKW array"}
+		}
+
+		//TODO: Later on I should get a sample file and feed it in through here
+
+		return {success: true};
 	}
 
 	private testADD(): Sim.Result{
@@ -168,13 +227,39 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	private testJSR(): Sim.Result{
+		this.resetSimulationState();
+		this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: 14});
+		this.pc = 0x30FF
+		this.memory.set(0x3000, {machine: 0, assembly: "", location: {pc: 0x3000, fileIndex: 14}});
+		let test0 = this.JSR("JSR TEST");
+		if (!test0.success) return test0;
+		if (this.pc != 0x2FFF || this.currentLine != 13) return {success: false, message: "Failed JSR Jump."};
+		if (this.registers[7] != 0x3100) return {success: false, message: "Failed JSR R7 PC Save."};
 
-		return {success: false, message: "TODO"};
+		this.resetSimulationState();
+		this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: 14});
+		this.pc = 0x3FFF
+		this.memory.set(0x3000, {machine: 0, assembly: "", location: {pc: 0x3000, fileIndex: 14}});
+		let test1 = this.JSR("JSR TEST");
+		if (test1.success || this.pc == 0x2FFF || this.currentLine == 13) return {success: false, message: "Failed the 11 bit limit."};
+
+		return {success: true};
 	}
 
 	private testJSRR(): Sim.Result{
+		for (let i = 0; i < 8; i++){
+			this.resetSimulationState();
+			this.pc = 0x3FFF
+			this.registers[i] = 0x3000;
+			let reg = "R"+String(i)
+			this.memory.set(0x3000, {machine: 0, assembly: "", location: {pc: 0x3000, fileIndex: 12}})
+			let test0 = this.JSRR("JSRR " + reg)
+			if (!test0.success) return test0;
+			if (this.pc != 0x2FFF || this.currentLine != 11) return {success: false, message: "Failed JSRR Jump."};
+			if (this.registers[7] != 0x4000) return {success: false, message: "Failed JSRR R7 PC Save."};
+		}
 
-		return {success: false, message: "TODO"};
+		return {success: true};
 	}
 
 	private testLD(): Sim.Result{
