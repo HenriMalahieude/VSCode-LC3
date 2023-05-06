@@ -33,7 +33,7 @@ export class LC3Simulator extends EventEmitter{
 
 	registers: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
 	condition_codes = {"N": false, "Z": true, "P": false}; //TODO: See what the condition codes are initialized to in LC3Tools
-	memory: Map<number, LC3Data>;
+	memory: Map<number, LC3Data>; //TODO: Fill with System Memory
 	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the current command instead of the next
 	psr: number = 0; //TODO
 	mcr: number = 0; //TODO
@@ -143,7 +143,7 @@ export class LC3Simulator extends EventEmitter{
 	//-----------------------Meta-Functions-----------------------
 
 	protected preprocess(testingFile: string[] | undefined): Result{
-		if (!this.file && !testingFile) return {success: false, message: "Opened in testing mode without"};
+		if (!this.file && !testingFile) return {success: false, message: "Opened in testing mode without testing file."};
 
 		let currentLocation: number = -1; //Sentinel Number
 		let codeAllowed: boolean = false; //To restrict code to between .ORIG and .END
@@ -161,7 +161,8 @@ export class LC3Simulator extends EventEmitter{
 		}
 
 		for (let i = 1; i-1 < max; i++){
-			let txt = getLine(i-1, this.file, testingFile).trim().toLocaleUpperCase();
+			let unformattedTxt = getLine(i-1, this.file, testingFile);
+			let txt = unformattedTxt.trim().toLocaleUpperCase();
 			let command = txt.split(" ");
 
 			//Ignore Empty Space and Comments
@@ -230,7 +231,7 @@ export class LC3Simulator extends EventEmitter{
 					this.memory.set(currentLocation, ll);
 					this.labelLocations.set(command[0], {pc: currentLocation, fileIndex: i-1});
 				} else if (txt.match(/\s.STRINGZ\s+/gm)){ //Strings
-					let ss = command[2].replaceAll(/"/gm, "");
+					let ss = unformattedTxt.split("\"")[1].replaceAll(/"/gm, "");
 					let ll: LC3Data = {
 						assembly: ss.at(0),
 						machine: ss.charCodeAt(0),
@@ -325,6 +326,8 @@ export class LC3Simulator extends EventEmitter{
 
 			currentLocation +=1;
 		}
+
+		if (codeAllowed) return {success: false, message: "Did not end program properly.\n(Did you remember to put a .END pseudo at the end?)"}
 
 		//console.log(this.memory);
 		//console.log(this.labelLocations);
@@ -574,7 +577,7 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Attempting to jump to unregistered location in memory. Forcing simulation end."};
 		}
 
-		if (!this.bitLimit(loc.pc - this.pc, 11)) return {success: false, message: "Label does not fit within 9 bit limit.\n[-256, 255]"};
+		if (!this.bitLimit(loc.pc - this.pc, 11)) return {success: false, message: "Label does not fit within 11 bit limit.\n[-1024, 1023]"};
 
 		let savePc = this.pc+1;
 		this.registers[7] = savePc;
@@ -942,7 +945,7 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	protected convertCommandToMachine(line: string): number{
-		return 0b00;
+		return 0b00; //TODO
 	}
 
 	protected updateConditionCodes(registerIndex: number){
