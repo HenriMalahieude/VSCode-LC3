@@ -15,7 +15,9 @@
 
 ## Integrated Simulated "Debugger"
 * Use VSCode's Debugger to Simulate LC-3 Programs
-* Clear Register View
+	* ![HowTo](./How%20to%20Sim%20LC3.gif)
+* Clear Register and Memory View
+	* ![SimView](./Memory_View.gif)
 * Memory Table/Search
 	* TODO
 * Easy to access stack
