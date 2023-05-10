@@ -48,6 +48,9 @@ export class LC3Simulator extends EventEmitter{
 	//Map Labels to locations in memory
 	protected labelLocations: Map<string, Bit16Location>; //For variables, all the way to positional labels
 
+	protected recursionLimit: number = 500;
+	protected runRecursionMultiplier: number = 10;
+
 	constructor(f: vscode.TextDocument | undefined){
 		super();
 		//Initialize the machine
@@ -90,12 +93,41 @@ export class LC3Simulator extends EventEmitter{
 		return lineString.text;
 	}
 
-	public stepOver(forward: boolean): Result{
-		//console.log("Asked To Step Over Line " + this.currentLine);
+	public stepOver(forward: boolean, pc: number | undefined): Result{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
 		if (this.file.lineCount < this.currentLine) {
-			this.status = {success: true, context: "Complete", message: "Complete", line: this.file.lineCount}
+			this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.file.lineCount}
+			this.halted = true;
+			return this.status;
+		}
+		
+		let nextPc = (pc != undefined) ? pc : (this.pc + 1); //Note where we need to stop
+		for (let i = 0; i < this.recursionLimit; i++){ //Now keep going until recursion limit is reached or.... until we find the PC
+			this.currentLine += 1;
+			
+			let state = this.interpretCommand(this.file.lineAt(this.currentLine).text);
+			if (!state.success){
+				state.line = this.currentLine+1;
+				state.context = "Runtime"
+				this.status = state;
+				this.halted = true;
+				return state;
+			}
+
+			if (this.pc == nextPc){
+				return state;
+			}
+		}
+
+		return {success: false, message: "Recursion limit reached.", line: this.currentLine+1, context: "Runtime"};
+	}
+
+	public stepIn(forward: boolean): Result{
+		if (!this.status.success || this.halted || !this.file) {return this.status;}
+
+		if (this.file.lineCount < this.currentLine) {
+			this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.file.lineCount}
 			this.halted = true;
 			return this.status;
 		}
@@ -113,31 +145,45 @@ export class LC3Simulator extends EventEmitter{
 		return succ;
 	}
 
-	public stepIn(forward: boolean): Result{
-		console.log("Asked to Step In!")
-		if (!this.status.success || this.halted) {return this.status;}
-
-		//Detect if that command sends the program elsewhere
-
-		return {success: true};
-	}
-
 	public stepOut(forward: boolean): Result{
 		console.log("Asked to Step Out!")
 		if (!this.status.success || this.halted) {return this.status;}
 
 		//Detect if this command is part of a subroutine
 
+		//TODO: Make a stack of PCs that this can jump to, only pushed into by JSRR and JSR and JUMP
+
 		return {success: true};
 	}
 
 	public run(): Result{//TODO: Add in Breakpoints
 		console.log("Asked to Run!")
-		if (!this.status.success || this.halted) {return this.status;}
+		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
-		//For Loop until HALT or end of program lines or max loop reached
+		for (let i = 0; i < this.recursionLimit * this.runRecursionMultiplier; i++){
+			this.currentLine += 1;
 
-		return {success: true};
+			let state = this.interpretCommand(this.file.lineAt(this.currentLine).text);
+			if (!state.success){
+				state.line = this.currentLine+1;
+				state.context = "Runtime";
+				this.status = state;
+				this.halted = true;
+				return state;
+			}
+
+			if (this.halted){
+				return {success: true};
+			}
+
+			if (this.file.lineCount < this.currentLine) {
+				this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.file.lineCount}
+				this.halted = true;
+				return this.status;
+			}
+		}
+
+		return {success: false, message: "Reached recursion limit of run.", context: "Runtime", line: this.currentLine};
 	}
 
 	//-----------------------Meta-Functions-----------------------
