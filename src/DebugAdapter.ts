@@ -28,7 +28,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	private outputChannel: vscode.OutputChannel;
 
 	private maxMemoryView: number = 16;
-	private maxStackView: number = 5;
+	private maxStackView: number = 8;
 
 	private _addressesInHex = true;
 	private _valuesInHex = true;
@@ -145,28 +145,6 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 					stackFrames: [{id: 0, name: txt, line: lin+1, column: 1, source: sourceFile}],
 					totalFrames: 1,
 				};
-			}else if (args.threadId == 2){
-				let whereStackEnds = 0xFE00;
-				for (let i = 0; i < 200; i++) { //Find where the stack ends
-					if (this._debugger.memory.get(0xFE00 + i) == undefined){
-						whereStackEnds += i;
-						break;
-					}
-				}
-
-				let whereStackBegins = (whereStackEnds - this.maxStackView) >= 0xFE00 ? (whereStackEnds - this.maxStackView) : 0xFE00;
-
-				response.body = {stackFrames: [], totalFrames: 1}
-				for (let i = whereStackEnds; i >= whereStackBegins; i--){
-					let data = this._debugger.memory.get(i);
-					if (data == undefined) data = emptyLC3Data();
-
-					let contents = this.formatAddress(i) + ": " + this.formatNumber(data.machine);
-					
-					response.body.stackFrames.push({id: i, name: contents, line: i, column: 0});
-
-					if (response.body.totalFrames) response.body.totalFrames += 1; //Without the IF statement, there is annoying error (YoU dIdNT cHeCk ifF uNdeEFined) ugh
-				}
 			}
 		}
 
@@ -190,8 +168,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		// runtime supports no threads so just return a default thread.
 		response.body = {
 			threads: [
-				new DAP.Thread(lc3DebugAdapter.threadID, "Next Instruction"),
-				new DAP.Thread(lc3DebugAdapter.threadID + 1, "Stack")
+				new DAP.Thread(lc3DebugAdapter.threadID, "Next Instruction")
 			]
 		};
 		this.sendResponse(response);
@@ -217,7 +194,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 							{name: "MCR", type: "integer", value: this.formatNumber(this._debugger.mcr), variablesReference: 0},
 						]
 					};
-				}else{
+				}else if (request.arguments.variablesReference == 2){
 					let vArr = [];
 
 					let curProgramCount = this._debugger.pc + 1;
@@ -242,7 +219,24 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 					}
 
 					response.body.variables = vArr;
+				}else{
+					let whereStackEnds = 0xFE00;
+					for (let i = 0; i < 200; i++) { //Find where the stack ends
+						if (this._debugger.memory.get(0xFE00 + i) == undefined){
+							whereStackEnds += i;
+							break;
+						}
+					}
 
+					let whereStackBegins = (whereStackEnds - this.maxStackView) >= 0xFE00 ? (whereStackEnds - this.maxStackView) : 0xFE00;
+
+					response.body = {variables: []}
+					for (let i = whereStackBegins; i <= whereStackEnds; i++){
+						let data = this._debugger.memory.get(i);
+						if (data == undefined) data = emptyLC3Data();
+						
+						response.body.variables.push({type: "string", name: (this.formatAddress(i) + " (" + String(i - whereStackBegins) + ")"), value: this.formatNumber(data.machine), variablesReference: 0});
+					}
 				}
 			}
 		}
@@ -253,7 +247,8 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		response.body = {
 			scopes: [
 				{name: "Registers", variablesReference: 1, expensive: false},
-				{name: "Memory", variablesReference: 2, expensive: true}
+				{name: "Memory", variablesReference: 2, expensive: true},
+				{name: "Stack", variablesReference: 3, expensive: true}
 			]
 		};
 		this.sendResponse(response);
@@ -355,6 +350,5 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	private stopEvent(ni: string){
 		this.sendEvent(new DAP.StoppedEvent(ni, lc3DebugAdapter.threadID)) //NOTE: These events require a ThreadId, or it will hitch forever
-		this.sendEvent(new DAP.StoppedEvent("stack", lc3DebugAdapter.threadID+1))
 	}
 }
