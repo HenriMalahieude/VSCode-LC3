@@ -32,6 +32,20 @@
 			}
 		],
 		"breakpoints": [{"language": "LC3"}],
+		"commands":[
+			{
+				"command": "ucr-lc3.debug.toggleFormatting",
+				"title": "Toggle between decimal and hex formatting"
+			}
+		],
+		"menus": {
+			"debug/variables/context": [
+				{
+					"command":"ucr-lc3.debug.toggleFormatting",
+					"when": "debugType == 'lcsim'"
+				}
+			]
+		},
 		"debuggers": [
 			{
 				"type": "lcsim",
@@ -44,7 +58,7 @@
 						"properties": {
 							"program": {
 								"type": "string",
-								"description": "Absolute path to a text file",
+								"description": "Absolute path to a text file, defaults to asking you.",
 								"default": "${workspaceFolder}/${command:AskForProgramName}"
 							}
 						}
