@@ -102,21 +102,36 @@ export class LC3Simulator extends EventEmitter{
 			return this.status;
 		}
 		
-		let nextPc = (pc != undefined) ? pc : (this.pc + 1); //Note where we need to stop
-		for (let i = 0; i < this.recursionLimit; i++){ //Now keep going until recursion limit is reached or.... until we find the PC
-			this.currentLine += 1;
-			
-			let state = this.interpretCommand(this.file.lineAt(this.currentLine).text);
-			if (!state.success){
-				state.line = this.currentLine+1;
-				state.context = "Runtime"
-				this.status = state;
-				this.halted = true;
-				return state;
-			}
+		//Two Step Over Modes: Step to First Command, Step to Next Command
+		let currentText = this.file.lineAt(Math.max(this.currentLine+1, 0)).text;
+		let overWhiteSpace = currentText.startsWith(".") || currentText.startsWith(";") || currentText.length <= 0
 
-			if (this.pc == nextPc){
-				return state;
+		if ((pc == undefined && !overWhiteSpace) || pc != undefined){ //We need to skip to the next command
+			let nextPc = (pc != undefined) ? pc : (this.pc + 1); //Note where we need to stop
+			for (let i = 0; i < this.recursionLimit; i++){ //Now keep going until recursion limit is reached or.... until we find the PC
+				this.currentLine += 1;
+
+				let state = this.interpretCommand(this.file.lineAt(this.currentLine).text);
+				if (!state.success){
+					state.line = this.currentLine+1;
+					state.context = "Runtime"
+					this.status = state;
+					this.halted = true;
+					return state;
+				}
+
+				if (this.pc == nextPc){
+					return state;
+				}
+			}
+		}else{ //Just skip over the white space until the next command
+			for (let i = Math.max(this.currentLine, 0); i < this.file.lineCount; i++){
+				this.currentLine = i;
+				let currentText = this.file.lineAt(this.currentLine).text; //can't reuse the old because of new currentLine
+				if (!currentText.startsWith(".") && !currentText.startsWith(";") && currentText.length > 0) {
+					this.currentLine--;
+					return {success: true}
+				}
 			}
 		}
 
@@ -160,7 +175,7 @@ export class LC3Simulator extends EventEmitter{
 		console.log("Asked to Run!")
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
-		for (let i = 0; i < this.recursionLimit * this.runRecursionMultiplier; i++){
+		/*for (let i = 0; i < this.recursionLimit * this.runRecursionMultiplier; i++){
 			this.currentLine += 1;
 
 			let state = this.interpretCommand(this.file.lineAt(this.currentLine).text);
@@ -181,7 +196,7 @@ export class LC3Simulator extends EventEmitter{
 				this.halted = true;
 				return this.status;
 			}
-		}
+		}*/
 
 		return {success: false, message: "Reached recursion limit of run.", context: "Runtime", line: this.currentLine};
 	}
