@@ -15,7 +15,6 @@ export function activate(ctx: vscode.ExtensionContext): void {
 	activateDebugging(ctx, output);
 }
 
-// This method is called when your extension is deactivated
 export function deactivate(ctx: vscode.ExtensionContext): void {
-	
+	//Nothing to deactivate
 }
