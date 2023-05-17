@@ -27,6 +27,8 @@ export function emptyLC3Data(): LC3Data{
 	}
 }
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 export class LC3Simulator extends EventEmitter{
 	status: Result = {success: true};
 	halted: boolean = false;
@@ -51,6 +53,10 @@ export class LC3Simulator extends EventEmitter{
 	protected recursionLimit: number = 500;
 	protected runRecursionMultiplier: number = 10;
 
+	protected stdout: number[] = [];
+	protected stdin: number[] = [];
+	protected stdinExpect: boolean = false; //Is true if stdin is expected and stdin is currently empty
+
 	constructor(f: vscode.TextDocument | undefined){
 		super();
 		//Initialize the machine
@@ -66,6 +72,8 @@ export class LC3Simulator extends EventEmitter{
 		}else{
 			//console.log("Opened simulator in testing mode.");
 		}
+
+		this.EventConnect();
 	}
 
 	public InitializeSimulator(){
@@ -80,10 +88,28 @@ export class LC3Simulator extends EventEmitter{
 		this.processed = true;
 	}
 
+	private EventConnect(){
+		this.on("stdin update", () => {
+			this.stdinExpect = false;
+		})
+	}
 	//-----------------------Public Functions for Simulator Control-----------------------
 
 	public getCurrentLine(): number{
 		return this.currentLine+1;
+	}
+
+	public getNextStdOut(): number | undefined {
+		return this.stdout.shift();
+	}
+
+	public addNextStdIn(item: number){
+		this.stdin.push(item);
+		this.stdinExpect = false;
+	}
+
+	public isExpectingInput(): boolean{
+		return this.stdinExpect;
 	}
 
 	public getCurrentInstruction(offset:number = 0): string{
@@ -93,7 +119,7 @@ export class LC3Simulator extends EventEmitter{
 		return lineString.text;
 	}
 
-	public stepOver(forward: boolean, pc: number | undefined): Result{
+	public async stepOver(forward: boolean, pc: number | undefined): Promise<Result>{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
 		if (this.file.lineCount < this.currentLine) {
@@ -111,7 +137,7 @@ export class LC3Simulator extends EventEmitter{
 			for (let i = 0; i < this.recursionLimit; i++){ //Now keep going until recursion limit is reached or.... until we find the PC
 				this.currentLine += 1;
 
-				let state = this.interpretCommand(this.file.lineAt(this.currentLine).text);
+				let state = await this.interpretCommand(this.file.lineAt(this.currentLine).text);
 				if (!state.success){
 					state.line = this.currentLine+1;
 					state.context = "Runtime"
@@ -120,14 +146,22 @@ export class LC3Simulator extends EventEmitter{
 					return state;
 				}
 
-				if (this.pc == nextPc){
-					return state;
+				if (this.pc == nextPc){ //We've located the command we need to stop on, therefore find next command
+					for (let i = this.currentLine+1; i < this.file.lineCount; i++){
+						this.currentLine = i;
+						currentText = this.file.lineAt(Math.max(this.currentLine, 0)).text;
+						if (!currentText.startsWith(".") && !currentText.startsWith(";") && currentText.length > 0){
+							this.currentLine--;
+							return state;
+						}
+					}
+					return {success: false, message: "Reached end of file before halt? (2)"};
 				}
 			}
 		}else{ //Just skip over the white space until the next command
-			for (let i = Math.max(this.currentLine, 0); i < this.file.lineCount; i++){
+			for (let i = this.currentLine+1; i < this.file.lineCount; i++){
 				this.currentLine = i;
-				let currentText = this.file.lineAt(this.currentLine).text; //can't reuse the old because of new currentLine
+				currentText = this.file.lineAt(Math.max(this.currentLine, 0)).text; //can't reuse the old because of new currentLine
 				if (!currentText.startsWith(".") && !currentText.startsWith(";") && currentText.length > 0) {
 					this.currentLine--;
 					return {success: true}
@@ -138,7 +172,7 @@ export class LC3Simulator extends EventEmitter{
 		return {success: false, message: "Recursion limit reached.", line: this.currentLine+1, context: "Runtime"};
 	}
 
-	public stepIn(forward: boolean): Result{
+	public async stepIn(forward: boolean): Promise<Result>{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
 		if (this.file.lineCount < this.currentLine) {
@@ -149,7 +183,7 @@ export class LC3Simulator extends EventEmitter{
 
 		this.currentLine += 1;
 
-		let succ = this.interpretCommand(this.file.lineAt(this.currentLine).text);
+		let succ = await this.interpretCommand(this.file.lineAt(this.currentLine).text);
 		if (!succ.success){
 			succ.line = this.currentLine+1; //translating from 0-index to 1-index
 			succ.context = "Runtime"
@@ -160,7 +194,7 @@ export class LC3Simulator extends EventEmitter{
 		return succ;
 	}
 
-	public stepOut(forward: boolean): Result{
+	public async stepOut(forward: boolean): Promise<Result>{
 		console.log("Asked to Step Out!")
 		if (!this.status.success || this.halted) {return this.status;}
 
@@ -171,14 +205,15 @@ export class LC3Simulator extends EventEmitter{
 		return {success: true};
 	}
 
-	public run(): Result{//TODO: Add in Breakpoints
+	//TODO: Test
+	public async run(): Promise<Result>{//TODO: Add in Breakpoints
 		console.log("Asked to Run!")
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
-		/*for (let i = 0; i < this.recursionLimit * this.runRecursionMultiplier; i++){
+		for (let i = 0; i < this.recursionLimit * this.runRecursionMultiplier; i++){
 			this.currentLine += 1;
 
-			let state = this.interpretCommand(this.file.lineAt(this.currentLine).text);
+			let state = await this.interpretCommand(this.file.lineAt(this.currentLine).text);
 			if (!state.success){
 				state.line = this.currentLine+1;
 				state.context = "Runtime";
@@ -196,7 +231,7 @@ export class LC3Simulator extends EventEmitter{
 				this.halted = true;
 				return this.status;
 			}
-		}*/
+		}
 
 		return {success: false, message: "Reached recursion limit of run.", context: "Runtime", line: this.currentLine};
 	}
@@ -356,7 +391,7 @@ export class LC3Simulator extends EventEmitter{
 						this.memory.set(currentLocation, 
 							{
 								assembly: txt,
-								machine: this.convertCommandToMachine(txt),
+								machine: this.convertCommandToMachine(txt, currentLocation),
 								location: {pc: currentLocation, fileIndex:i-1},
 							});
 					}else if (command.length > 1 && command[1].substring(0, 1) != ";"){
@@ -377,11 +412,13 @@ export class LC3Simulator extends EventEmitter{
 				return {success: false, line: i, message: "Missing location to place opcodes at.\n(.ORIG x3000?)"};
 			}
 			
+			//TODO: Make a second loop, so we get all labels first and then process the commands
+
 			//Otherwise, it's a command/opcode and we just record it into memory
 			this.memory.set(currentLocation, 
 				{
 					assembly: txt,
-					machine: this.convertCommandToMachine(txt),
+					machine: this.convertCommandToMachine(txt, currentLocation),
 					location: {pc: currentLocation, fileIndex:i-1},
 				})
 
@@ -397,7 +434,7 @@ export class LC3Simulator extends EventEmitter{
 		return {success: true};
 	}
 
-	protected interpretCommand(line: string): Result{
+	protected async interpretCommand(line: string): Promise<Result>{
 		let manip = line.trim().toLocaleUpperCase();
 		if (manip.startsWith(".END")) { return {success: false, message: "Reached End of Program without halting. Forcing an end."}; }
 		if (manip.startsWith(".") || manip.startsWith(";") || manip.length <= 0) return {success: true};
@@ -417,15 +454,15 @@ export class LC3Simulator extends EventEmitter{
 		this.pc++;
 		//Macros
 		if (manip.match(/\s*GETC\s*/gm)){
-			return this.TRAP("TRAP X20");
+			return await this.TRAP("TRAP X20");
 		}else if (manip.match(/\s*OUT\s*/gm)){
-			return this.TRAP("TRAP X21");
+			return await this.TRAP("TRAP X21");
 		}else if (manip.match(/\s*PUTS\s*/gm)){
-			return this.TRAP("TRAP X22");
+			return await this.TRAP("TRAP X22");
 		}else if (manip.match(/\s*IN\s*/gm)){
-			return this.TRAP("TRAP X23");
+			return await this.TRAP("TRAP X23");
 		}else if (manip.match(/\s*HALT\s*/gm)){
-			return this.TRAP("TRAP X25");
+			return await this.TRAP("TRAP X25");
 		}else if (manip.match(/\s*RET\s*/gm)){
 			return this.JMP("JMP R7");
 		}
@@ -463,7 +500,7 @@ export class LC3Simulator extends EventEmitter{
 		}else if (manip.startsWith("STR ")){
 			return this.STR(manip);
 		}else if (manip.startsWith("TRAP ")){
-			return this.TRAP(manip);
+			return await this.TRAP(manip);
 		}
 
 		return {success: false, message: "Couldn't understand line. Is that a valid OPCode?"};
@@ -929,18 +966,55 @@ export class LC3Simulator extends EventEmitter{
 		return {success: true};
 	}
 
-	protected TRAP(line: string): Result{
+	protected async TRAP(line: string): Promise<Result>{
 		let command = line.split(" ");
 		let numerical = this.convertNumber(command[1].toLocaleUpperCase());
 
 		if (numerical == 0x20){ //GETC: Read one character
-			return {success: false, message: "TODO"};
+			let v = this.stdin.at(0);
+
+			if (v == undefined) this.emit("stdin");
+
+			while (v == undefined){
+				this.stdinExpect = true;
+				await sleep(250);
+				v = this.stdin.at(0);
+			}
+
+			this.registers[0] = v;
+			this.stdin.shift();
+			
+			this.stdinExpect = false;
 		} else if (numerical == 0x21){ //OUT: Output one character
-			return {success: false, message: "TODO"};
+			this.stdout.push(this.registers[0]);
 		} else if (numerical == 0x22){ //PUTS: Output an entire string to console
-			return {success: false, message: "TODO"};
+			for (let i = 0; i < 100; i++){
+				let out = this.memory.get(this.registers[0] + i);
+				
+				if (out == undefined) return {success: false, message: "Attempted to PUTS invalid information. Halting simulation."};
+				
+				this.stdout.push(out.machine);
+				
+				if (out.machine == 0){
+					return {success: true};
+				}
+			}
+			return {success: false, message: "Reached PUTS string size limit (100). Halting Simulation"};
 		} else if (numerical == 0x23){ //IN: Read and echo one character
-			return {success: false, message: "TODO"};
+			let v = this.stdin.at(0);
+			if (v == undefined) this.emit("stdin");
+
+			while (v == undefined){
+				this.stdinExpect = true;
+				await sleep(250);
+				v = this.stdin.at(0);
+			}
+
+			this.stdout.push(v);
+			this.registers[0] = v;
+			this.stdin.shift();
+
+			this.stdinExpect = false;
 		} else if (numerical == 0x25){ //HALT: Stop computer
 			this.halted = true;
 		}
@@ -990,9 +1064,10 @@ export class LC3Simulator extends EventEmitter{
 		if (line.startsWith("TRAP ")) return true;
 
 		if (line.match(/\s*HALT\s*/gm)) return true;
-		if (line.match(/\s*PUTC\s*/gm)) return true;
+		if (line.match(/\s*PUTS\s*/gm)) return true;
 		if (line.match(/\s*GETC\s*/gm)) return true;
 		if (line.match(/\s*RET\s*/gm)) return true;
+		if (line.match(/\s*OUT\s*/gm)) return true;
 
 		return false;
 	}
@@ -1005,7 +1080,7 @@ export class LC3Simulator extends EventEmitter{
 		return line;
 	}
 
-	protected convertCommandToMachine(line: string): number{
+	protected convertCommandToMachine(line: string, location: number): number{
 		return 0b00; //TODO
 	}
 

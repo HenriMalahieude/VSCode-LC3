@@ -69,13 +69,29 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 			vscode.window.showTextDocument(td); //Focus this Text Document
 
-			this.outputChannel.clear();
+			this.outputChannel.replace("");
 			this._debugger = new LC3Simulator(td);
 
 			this._debugger.on("warning", (rr:Result) => {
 				//console.log("Received warning");
 				this.outputChannel.show();
 				this.outputChannel.appendLine(this.formatResult(rr));
+			})
+
+			this._debugger.on("stdin", () => {
+				vscode.window.showInputBox({
+					placeHolder: 'Program asking for input, this will fill the input stream',
+					value: ''
+				}).then((item: string | undefined) => {
+					if (item != undefined){
+						if (this._debugger){
+							for (let i = 0; i < item.length; i++){
+								this._debugger.addNextStdIn(item.charCodeAt(i));
+							}
+							this._debugger.emit("stdin update");
+						}
+					}
+				});
 			})
 
 			this._debugger.InitializeSimulator();
@@ -256,53 +272,60 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
 		if (this._debugger){
-			let info: Result = this._debugger.run();
-			if (info.success === false){
-				response.success = false;
-				return this.sendFormattedErrorMessage(response, this._debugger.status);
-			}
+			this._debugger.run().then((info: Result) => {
+				if (info.success == false){
+					response.success = false;
+					if (this._debugger) return this.sendFormattedErrorMessage(response, this._debugger.status);
+				}
+				this.stopEvent("end");
+				this.stdoutUpdate();
+			});
 		}
 		this.sendResponse(response);
 	}
 
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
 		if (this._debugger){
-			let info: Result = this._debugger.stepOver(true, undefined);
-			//console.log(info)
-			if (info.success === false){
-				response.success = false;
-				return this.sendFormattedErrorMessage(response, this._debugger.status);
-			}
-			this.stopEvent("next")
+			this._debugger.stepOver(true, undefined).then((info: Result) => {
+				if (info.success == false){
+					response.success = false;
+					if (this._debugger) return this.sendFormattedErrorMessage(response, this._debugger.status);
+				}
+				this.stopEvent("step over");
+				this.stdoutUpdate();
+			});
 		}
 		this.sendResponse(response);
 	}
 
 	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
 		if (this._debugger){
-			let info: Result = this._debugger.stepIn(true);
-			if (info.success === false){
-				response.success = false;
-				return this.sendFormattedErrorMessage(response, this._debugger.status);
-			}
-			this.stopEvent("step in")
+			this._debugger.stepIn(true).then((info: Result) => {
+				if (info.success == false){
+					response.success = false;
+					if (this._debugger) return this.sendFormattedErrorMessage(response, this._debugger.status);
+				}
+				this.stopEvent("step in");
+				this.stdoutUpdate();
+			});
 		}
 		this.sendResponse(response);
 	}
 
 	protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments, request?: DebugProtocol.Request | undefined): void {
 		if (this._debugger){
-			let info: Result = this._debugger.stepOut(true); //TODO
-			if (info.success == false){
-				response.success = false;
-				return this.sendFormattedErrorMessage(response, this._debugger.status);
-			}
-			this.stopEvent("step out");
+			this._debugger.stepOut(true).then((info: Result) => {
+				if (info.success == false){
+					response.success = false;
+					if (this._debugger) return this.sendFormattedErrorMessage(response, this._debugger.status);
+				}
+				this.stopEvent("step out");
+				this.stdoutUpdate();
+			});
 		}
 		this.sendResponse(response);
 	}
 
-	//TODO: Formatting Request
 	protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
 		if (command == 'toggleFormatting') {
 			this._valuesInHex =! this._valuesInHex;
@@ -350,5 +373,18 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	private stopEvent(ni: string){
 		this.sendEvent(new DAP.StoppedEvent(ni, lc3DebugAdapter.threadID)) //NOTE: These events require a ThreadId, or it will hitch forever
+	}
+
+	private stdoutUpdate(){
+		if (this._debugger){
+			let v = this._debugger.getNextStdOut();
+			while (v != undefined){
+				console.log("Stdout: ", v);
+				this.outputChannel.show();
+				this.outputChannel.append(String.fromCharCode(v));
+				
+				v = this._debugger.getNextStdOut();
+			}
+		}
 	}
 }

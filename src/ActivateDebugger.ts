@@ -6,8 +6,6 @@ export function activateDebugging(ctx: vscode.ExtensionContext, otc: vscode.Outp
 	//Activate the debugger to run inside of vscode
 	ctx.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('lcsim', new InlineAdapterFactory(ctx, otc)));
 
-	//TODO: Dynamic Debug Launcher thingy?
-
 	vscode.commands.registerCommand('ucr-lc3.debug.getProgramName', config => {
 		return vscode.window.showInputBox({
 		  placeHolder: 'Please enter the name of an object file in the workspace folder',
