@@ -2,22 +2,17 @@
 
 # UCR's Vscode LC3-Extension
 ## Code Highlighting
-* Registers
-	* PIC TODO 
-* Opcodes
-	* PIC TODO
-* Numbers
-	* PIC TODO
-* Macros
-	* PIC TODO
-* Pseudo-ops
-	* PIC TODO
+![Example](./pictures/example_program.png)
+
+## Code Diagnostics
+![FirstError](./pictures/error1.png)
+![SecondError](./pictures/error2.png)
 
 ## Integrated Simulated "Debugger"
 * Use VSCode's Debugger to Simulate LC-3 Programs
-	* ![HowTo](./How%20to%20Sim%20LC3.gif)
-* Clear Register and Memory View
-	* ![SimView](./Memory_View.gif)
+	* ![HowTo](./pictures/How%20to%20Sim%20LC3.gif)
+* Simple Register and Memory View
+	* ![SimView](./pictures/Memory_View.gif)
 * Memory Table/Search
 	* TODO
 * Easy to access stack
