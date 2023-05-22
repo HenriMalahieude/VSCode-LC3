@@ -69,7 +69,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 			vscode.window.showTextDocument(td); //Focus this Text Document
 
-			this.outputChannel.replace("");
+			this.outputChannel.clear();
 			this._debugger = new LC3Simulator(td);
 
 			this._debugger.on("warning", (rr:Result) => {
@@ -79,17 +79,25 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 			})
 
 			this._debugger.on("stdin", () => {
+				this.stdoutUpdate(); //If the sim is running, we update the output to make it clear when you want intput
 				vscode.window.showInputBox({
-					placeHolder: 'Program asking for input, this will fill the input stream',
-					value: ''
+					title: 'LC3-Simulator Input Request',
+					placeHolder: '',//Hello, World!
+					prompt: 'Single char \'a\' or full string \'Hello, World!\'',
+					value: '',
+					ignoreFocusOut: true,
 				}).then((item: string | undefined) => {
+					console.log(item)
 					if (item != undefined){
 						if (this._debugger){
 							for (let i = 0; i < item.length; i++){
 								this._debugger.addNextStdIn(item.charCodeAt(i));
+								this._debugger.emit("stdin update");
 							}
-							this._debugger.emit("stdin update");
 						}
+						this.stdoutUpdate(); //Update the output, though this may be too fast, not sure though
+					}else{
+						if (this._debugger) this._debugger.emit("stdin"); //We don't want them running away
 					}
 				});
 			})
@@ -379,9 +387,13 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		if (this._debugger){
 			let v = this._debugger.getNextStdOut();
 			while (v != undefined){
-				console.log("Stdout: ", v);
+				//console.log("Stdout: ", v);
 				this.outputChannel.show();
-				this.outputChannel.append(String.fromCharCode(v));
+				if (v >= 31 && v <= 127){
+					this.outputChannel.append(String.fromCharCode(v));
+				}else if (v >= 127){
+					this.outputChannel.append("[?]");
+				}
 				
 				v = this._debugger.getNextStdOut();
 			}
