@@ -50,8 +50,8 @@ export class LC3Simulator extends EventEmitter{
 	//Map Labels to locations in memory
 	protected labelLocations: Map<string, Bit16Location>; //For variables, all the way to positional labels
 
-	protected recursionLimit: number = 500;
-	protected runRecursionMultiplier: number = 10;
+	protected recursionLimit: number = 10000;
+	protected runRecursionMultiplier: number = 10; //When you click run
 
 	protected stdout: number[] = [];
 	protected stdin: number[] = [];
@@ -227,13 +227,13 @@ export class LC3Simulator extends EventEmitter{
 			}
 
 			if (this.file.lineCount < this.currentLine) {
-				this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.file.lineCount}
+				this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.file.lineCount};
 				this.halted = true;
 				return this.status;
 			}
 		}
 
-		return {success: false, message: "Reached recursion limit of run.", context: "Runtime", line: this.currentLine};
+		return {success: false, message: "Reached recursion limit of run. You may have an infinite loop in your code.", context: "Runtime", line: this.currentLine+1};
 	}
 
 	//-----------------------Meta-Functions-----------------------
@@ -393,7 +393,7 @@ export class LC3Simulator extends EventEmitter{
 								assembly: txt,
 								machine: this.convertCommandToMachine(txt, currentLocation),
 								location: {pc: currentLocation, fileIndex:i-1},
-							});
+							});//*/ //NOTE: I've decided to move where we mark commands
 					}else if (command.length > 1 && command[1].substring(0, 1) != ";"){
 						return {success: false, line: i, message: "Positional label properly labeled, but did not understand following command on same line."};
 					}
@@ -414,7 +414,8 @@ export class LC3Simulator extends EventEmitter{
 			
 			//TODO: Make a second loop, so we get all labels first and then process the commands
 
-			//Otherwise, it's a command/opcode and we just record it into memory
+			//Otherwise, it's a command/opcode and we just record it into memory, later
+			//console.log(txt)
 			this.memory.set(currentLocation, 
 				{
 					assembly: txt,
@@ -426,6 +427,10 @@ export class LC3Simulator extends EventEmitter{
 		}
 
 		if (codeAllowed) return {success: false, message: "Did not end program properly.\n(Did you remember to put a .END pseudo at the end?)"}
+
+		codeAllowed = false;
+		currentLocation = -1;
+		subroutineMark = false;
 
 		//console.log(this.memory);
 		//console.log(this.labelLocations);
@@ -440,6 +445,7 @@ export class LC3Simulator extends EventEmitter{
 		if (manip.startsWith(".") || manip.startsWith(";") || manip.length <= 0) return {success: true};
 
 		if (!this.startsWithCommand(manip)){
+			console.log(manip)
 			if (manip.split(" ").length > 1){
 				manip = manip.substring(manip.indexOf(" ")+1) //Removes the label (NOTE: for positional labels)	
 			}else{
@@ -1068,6 +1074,7 @@ export class LC3Simulator extends EventEmitter{
 		if (line.match(/\s*GETC\s*/gm)) return true;
 		if (line.match(/\s*RET\s*/gm)) return true;
 		if (line.match(/\s*OUT\s*/gm)) return true;
+		if (line.match(/\s*IN\s*/gm) && !line.match(/\s*.STRINGZ\s*/gm)) return true;
 
 		return false;
 	}
