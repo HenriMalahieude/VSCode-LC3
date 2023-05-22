@@ -58,8 +58,8 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 	if (lineOfText.isEmptyOrWhitespace || txt.substring(0, 1) == ";") return null;
 
 	//If starts with number
-	if (txt.substring(0,1).search("[0-9]") != -1){
-		return new vscode.Diagnostic(lineOfText.range, "Label cannot start with a number", err);
+	if (txt.substring(0,1).search(/[0-9]/) != -1){// || txt.substring(0,1).search(/./) != -1){
+		return new vscode.Diagnostic(lineOfText.range, "Label cannot start with a number or period", err);
 	}
 	
 	//-------------------------------------------------------------------------------Op Code Special Cases
@@ -113,7 +113,7 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		}
 
 		if ((opform != "NOT" && fullOperation.length != 4) || (opform === "NOT" && fullOperation.length != 3)){
-			return new vscode.Diagnostic(fullLineRange, "Incomplete Statement. Format needed: \nOPC DR, SR, SR\nOPC DR, SR, imm5\nNOT DR, SR", err)
+			return new vscode.Diagnostic(fullLineRange, "Incomplete Statement. Format needed: \nOPC DR, SR, SR\nOPC DR, SR, imm5", err)
 		}
 
 		//Check that DR1 and SR1 are genuinely registers
@@ -133,8 +133,8 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 			return new vscode.Diagnostic(fullLineRange, "Incomplete Statement. Format needed: \nOPC label", err);
 		}
 
-		if (fullOperation[1].substring(0,1).search("[0-9]") != -1){
-			return new vscode.Diagnostic(fullLineRange, "Label cannot start with a number", err)
+		if (fullOperation[1].substring(0,1).search("[0-9]") != -1 || fullOperation[1].startsWith(".")){
+			return new vscode.Diagnostic(fullLineRange, "Label cannot start with a number or period", err)
 		}
 
 		return null
@@ -221,6 +221,7 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		return para.substring(0, 8).toLocaleUpperCase().split(" ")[0]
 	}
 
+	let isVariablePseudoFirst = (extractPseudoOp(fullOperation[0]) == ".FILL" || extractPseudoOp(fullOperation[0]) == ".STRINGZ" || extractPseudoOp(fullOperation[0]) == ".BLKW");
 	if (txt.startsWith(".")){
 		//Pseudo relating to code location
 		if (extractPseudoOp(fullOperation[0]) == ".ORIG"){
@@ -241,26 +242,24 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 			return null
 		}
 
-		//Pseudo relating to Variables
-		let isVariablePseudoFirst = (extractPseudoOp(fullOperation[0]) == ".FILL" || extractPseudoOp(fullOperation[0]) == ".STRINGZ" || extractPseudoOp(fullOperation[0]) == ".BLKW");
-		
+		if (isVariablePseudoFirst){
+			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \nlabel .PSEUDO info", err);
+		}
+
+		return new vscode.Diagnostic(fullLineRange, "Unrecognized Pseudo-Operator, simulator/compiler will ignore line.", err);
+	}else{
 		if (isVariablePseudoFirst){
 			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \nlabel .PSEUDO info", err);
 		}else if (fullOperation.length >= 2){
 			let isVariablePseudoSecond = (extractPseudoOp(fullOperation[1]) == ".FILL" || extractPseudoOp(fullOperation[1]) == ".STRINGZ" || extractPseudoOp(fullOperation[1]) == ".BLKW");
-			
+
 			if (isVariablePseudoSecond && fullOperation.length < 3){
 				return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \nlabel .PSEUDO info", err);
 			}
 
 			return null
 		}
-
-		return new vscode.Diagnostic(fullLineRange, "Unrecognized Pseudo-Operator, compiler will ignore line.", err);
-	}/*else if (fullOperation.length >= 2){
-		return new vscode.Diagnostic(fullLineRange, "Labels cannot have spaces. Please use underscore (_) instead", err);
-	}*/
-	
+	}
 
 	return null;
 }
