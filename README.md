@@ -12,7 +12,7 @@
 * Use VSCode's Debugger to Simulate LC-3 Programs
 	* ![HowTo](./pictures/How%20to%20Sim%20LC3.gif)
 * Simple Register and Memory View
-	* ![SimView](./pictures/Memory_View.gif)
+	* ![SimView](./pictures/Memory_View.gif) ![MemView](./pictures/memory_view2.png)
 * Memory Table/Search
 	* TODO
 * Easy to access stack
