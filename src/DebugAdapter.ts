@@ -354,7 +354,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 			if (nn < 0){
 				nn += 16 * 16 * 16 * 16; //Since it's negative we don't want 0x-5, we want 0xFFFB;
 			}
-			return '0x' + nn.toString(16)
+			return ('0x' + nn.toString(16).toLocaleUpperCase());
 		}
 
 		return x.toString(10);
@@ -376,7 +376,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	private formatResult(res: Result): string {
-		return `(Line ${res.line}) ${res.context}: ${res.message}`;
+		return `\n(Line ${res.line}) ${res.context}: ${res.message}`;
 	}
 
 	private stopEvent(ni: string){
