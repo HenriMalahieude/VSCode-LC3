@@ -221,7 +221,6 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 		return para.substring(0, 8).toLocaleUpperCase().split(" ")[0]
 	}
 
-	let isVariablePseudoFirst = (extractPseudoOp(fullOperation[0]) == ".FILL" || extractPseudoOp(fullOperation[0]) == ".STRINGZ" || extractPseudoOp(fullOperation[0]) == ".BLKW");
 	if (txt.startsWith(".")){
 		//Pseudo relating to code location
 		if (extractPseudoOp(fullOperation[0]) == ".ORIG"){
@@ -242,12 +241,14 @@ function diagnose(doc: vscode.TextDocument, lineIndex: number): null | vscode.Di
 			return null
 		}
 
+		let isVariablePseudoFirst = (extractPseudoOp(fullOperation[0]) == ".FILL" || extractPseudoOp(fullOperation[0]) == ".STRINGZ" || extractPseudoOp(fullOperation[0]) == ".BLKW");
 		if (isVariablePseudoFirst){
 			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \nlabel .PSEUDO info", err);
 		}
 
-		return new vscode.Diagnostic(fullLineRange, "Unrecognized Pseudo-Operator, simulator/compiler will ignore line.", err);
+		return new vscode.Diagnostic(fullLineRange, "Unrecognized Pseudo-Operator, cannot start label with .", err);
 	}else{
+		let isVariablePseudoFirst = (extractPseudoOp(fullOperation[0]) == ".FILL" || extractPseudoOp(fullOperation[0]) == ".STRINGZ" || extractPseudoOp(fullOperation[0]) == ".BLKW");
 		if (isVariablePseudoFirst){
 			return new vscode.Diagnostic(fullLineRange, "Incomplete Pseudo-Op. Format needed: \nlabel .PSEUDO info", err);
 		}else if (fullOperation.length >= 2){
