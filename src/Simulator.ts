@@ -119,6 +119,7 @@ export class LC3Simulator extends EventEmitter{
 		return lineString.text;
 	}
 
+	//TODO: Have it stop on the next command after a RET
 	public async stepOver(forward: boolean, pc: number | undefined): Promise<Result>{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
@@ -157,6 +158,8 @@ export class LC3Simulator extends EventEmitter{
 					}
 					return {success: false, message: "Reached end of file before halt? (2)"};
 				}
+
+				if (this.status.success && this.halted) return {success: true};
 			}
 		}else{ //Just skip over the white space until the next command
 			for (let i = this.currentLine+1; i < this.file.lineCount; i++){
@@ -205,7 +208,6 @@ export class LC3Simulator extends EventEmitter{
 		return {success: true};
 	}
 
-	//TODO: Test
 	public async run(): Promise<Result>{//TODO: Add in Breakpoints
 		console.log("Asked to Run!")
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
@@ -282,7 +284,7 @@ export class LC3Simulator extends EventEmitter{
 							return {success: false, message: "Cannot populate program within system reserved memory\n(Reserved memory [0x0000, 0x3000) && (0xFE00, 0xFFFF])", line: i};
 						}
 	
-						if (command[1].startsWith("B") || command[1].startsWith("#")) this.warn({success: false, line: i, message: ".ORIG pseudo ops should provide number in hexdecimal format (x).", context: "Preprocessing Warning"})
+						if (command[1].startsWith("B") || command[1].startsWith("#")) this.warn({success: false, line: i, message: ".ORIG pseudo ops should provide number in hexadecimal format (x).", context: "Preprocessing Warning"})
 					}else{
 						return {success: false, message: "Did not specify where previous routine op codes ended. Please use '.end' to specify end before another '.orig'.", line: i};
 					}
@@ -388,7 +390,7 @@ export class LC3Simulator extends EventEmitter{
 			if (currentLocation > 0x2FFF){
 				if (!this.startsWithCommand(txt)){
 					if (command.length > 1 && command[1].substring(0, 1) != ";" && this.startsWithCommand(command[1]+" ")){ //If there are opcodes after this label
-						this.memory.set(currentLocation, 
+						/*this.memory.set(currentLocation, 
 							{
 								assembly: txt,
 								machine: this.convertCommandToMachine(txt, currentLocation),
@@ -411,26 +413,61 @@ export class LC3Simulator extends EventEmitter{
 			}else{
 				return {success: false, line: i, message: "Missing location to place opcodes at.\n(.ORIG x3000?)"};
 			}
-			
-			//TODO: Make a second loop, so we get all labels first and then process the commands
 
-			//Otherwise, it's a command/opcode and we just record it into memory, later
-			//console.log(txt)
-			this.memory.set(currentLocation, 
-				{
-					assembly: txt,
-					machine: this.convertCommandToMachine(txt, currentLocation),
-					location: {pc: currentLocation, fileIndex:i-1},
-				})
-
+			//Otherwise, it's a command/opcode and we just record it into memory in the later loop
 			currentLocation +=1;
 		}
 
 		if (codeAllowed) return {success: false, message: "Did not end program properly.\n(Did you remember to put a .END pseudo at the end?)"}
 
+		//Reload so we then mark all opcodes into memory
 		codeAllowed = false;
 		currentLocation = -1;
 		subroutineMark = false;
+
+		for (let i = 1; i-1 < max; i++){
+			let unformattedTxt = getLine(i-1, this.file, testingFile);
+			let txt = unformattedTxt.trim().toLocaleUpperCase();
+			let command = txt.split(" ");
+
+			//Ignore Empty Space and Comments
+			if (txt.search("^\s*$") > -1 || txt.substring(0, 1) == ";") continue;
+
+			if (txt.startsWith(".ORIG ")){
+				currentLocation = this.convertNumber(command[1]);
+				subroutineMark = true;
+				codeAllowed = true;
+
+				continue;
+			}
+
+			if (txt.match(/.END\s*/gm)){
+				codeAllowed = false;
+
+				continue;
+			}
+
+			if (!this.startsWithCommand(txt) ){ //Perhaps Positional Label
+				command.shift();
+
+				if (!this.startsWithCommand(command[0]+" ") || command.length <= 0){ //Catching anything
+					if (codeAllowed) currentLocation++;
+					continue;
+				}
+			}
+			
+			let entry: LC3Data = {
+				assembly: txt,
+				location: {pc: currentLocation, fileIndex: i-1},
+				machine: this.convertCommandToMachine(currentLocation, command[0], command.at(1), command.at(2), command.at(3))
+			}
+			
+			if (Number.isNaN(entry.machine)) return {success: false, message: "Could not convert assembly into machine code (binary)?", line: i};
+
+			this.memory.set(currentLocation, entry)
+
+			if (codeAllowed) currentLocation++;
+		}
 
 		//console.log(this.memory);
 		//console.log(this.labelLocations);
@@ -497,8 +534,8 @@ export class LC3Simulator extends EventEmitter{
 			return this.LEA(manip);
 		}else if (manip.startsWith("NOT ")){
 			return this.NOT(manip);
-		}else if (manip.startsWith("RTI ")){
-			return {success: false, message: "TODO"}; //TODO
+		}else if (manip.search(/RTI\b/gm) != -1){
+			return {success: false, message: "Simulator does not simulate System Memory."};
 		}else if (manip.startsWith("ST ")){
 			return this.ST(manip);
 		}else if (manip.startsWith("STI ")){
@@ -1087,8 +1124,116 @@ export class LC3Simulator extends EventEmitter{
 		return line;
 	}
 
-	protected convertCommandToMachine(line: string, location: number): number{
-		return 0b00; //TODO
+	protected convertCommandToMachine(location: number, opcode: string, arg1: string | undefined, arg2: string | undefined, arg3: string | undefined): number{
+		if (opcode == "ADD" || opcode == "AND"){
+			let opc = (opcode == "AND") ? 0b0101 : 0b0001;
+			let DR = Number(arg1?.substring(1,2)) * Math.pow(2, 9)
+			let SR1 = Number(arg2?.substring(1,2)) * Math.pow(2, 6)
+			let rFlag = 1;
+			let numerical = (arg3 != undefined) ? this.convertNumber(arg3) : NaN;
+			if (Number.isNaN(numerical)){
+				numerical = Number(arg3?.substring(1,2))
+				rFlag = 0;
+			}
+			rFlag *= Math.pow(2, 5);
+			return (opc) * Math.pow(2, 12) + DR + SR1 + rFlag + numerical;
+		}else if (opcode.startsWith("BR")){
+			//let opc = 0b0000;
+			let flags = 0;
+			if (opcode.indexOf("N") > 1) flags += 0b100;
+			if (opcode.indexOf("Z") > 2) flags += 0b010;
+			if (opcode.indexOf("P") > 3) flags += 0b001;
+			flags *= Math.pow(2, 9);
+
+			let obj = (arg1) ? this.labelLocations.get(arg1) : {pc: 0};
+			let direction = (obj) ? obj.pc : 0;
+			let pcoffset9 = direction - location;
+			if (pcoffset9 < 0){ //NOTE: Not sure if negative numbers should be fixed or not
+				pcoffset9 = ~pcoffset9 + 1;
+			}
+
+			return flags + pcoffset9;
+		}else if (opcode == "JMP"){
+			let opc = 0b1100
+			let register = (arg1) ? Number(arg1.at(1)) : NaN;
+			return opc * Math.pow(2, 12) + register * Math.pow(2, 6);
+		}else if (opcode == "JSR"){
+			let opc = 0b01001; //2^11
+
+			let obj = (arg1) ? this.labelLocations.get(arg1) : {pc: NaN};
+			let direction = (obj) ? obj.pc : NaN;
+			let pcoffset11 = direction - location;
+
+			return opc * Math.pow(2, 11) + pcoffset11;
+		}else if (opcode == "JSRR"){
+			let opc = 0b0100;
+			let register = (arg1) ? Number(arg1.at(1)) : NaN;
+			return opc * Math.pow(2, 12) + register * Math.pow(2, 6);
+		}else if (opcode == "LD" || opcode == "LDI" || opcode == "LEA"){
+			let opc = (opcode == "LD") ? 0b0010 : 0b1010;
+			if (opcode == "LEA") opc = 0b1110;
+
+			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
+			
+			let pcoffset9;
+			let obj = (arg2) ? this.labelLocations.get(arg2) : undefined;
+			if (obj != undefined){
+				let direction = (obj) ? obj.pc : NaN;
+				pcoffset9 = direction - location;
+			}else{
+				pcoffset9 = (arg2) ? Number(arg2) : NaN; //NOTE: IDK why I have this here because I block direct encoding for execution
+			}
+
+			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + pcoffset9;
+		}else if (opcode == "LDR" || opcode == "STR"){
+			let opc = (opcode == "LDR") ? 0b0110 : 0b0111;
+
+			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
+			let br = (arg2) ? Number(arg2.at(1)) : NaN;
+			let offset = (arg3) ? this.convertNumber(arg3) : NaN;
+
+			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + br * Math.pow(2, 6) + offset;
+		}else if (opcode == "NOT"){
+			let opc = 0b1001;
+			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
+			let sr = (arg2) ? Number(arg2.at(1)) : NaN;
+
+			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + sr * Math.pow(2, 6) + 0b111111;
+		}else if (opcode == "RET"){
+			return 0b1100000111000000;
+		}else if (opcode == "ST" || opcode == "STI"){
+			let opc = (opcode == "ST") ? 0b0011 : 0b1011;
+
+			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
+			
+			let pcoffset9;
+			let obj = (arg2) ? this.labelLocations.get(arg2) : undefined;
+			if (obj != undefined){
+				let direction = (obj) ? obj.pc : NaN;
+				pcoffset9 = direction - location;
+			}else{
+				pcoffset9 = (arg2) ? Number(arg2) : NaN; //NOTE: IDK why I have this here because I block direct encoding for execution
+			}
+
+			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + pcoffset9;
+		}else if (opcode == "TRAP" || opcode == "HALT" || opcode == "PUTS" || opcode == "GETC" || opcode == "OUT" || opcode == "IN"){
+			let opc = 0b1111;
+
+			let numerical = NaN;
+			if (arg1){
+				numerical = this.convertNumber(arg1);
+			}else{
+				if (opcode == "HALT") numerical = 0x25;
+				if (opcode == "PUTS") numerical = 0x22;
+				if (opcode == "GETC") numerical = 0x20;
+				if (opcode == "OUT") numerical = 0x21;
+				if (opcode == "IN") numerical = 0x23;
+			}
+
+			return opc * Math.pow(2, 12) + numerical;
+		}
+
+		return NaN;
 	}
 
 	protected updateConditionCodes(registerIndex: number){
@@ -1121,7 +1266,7 @@ export class LC3Simulator extends EventEmitter{
 
 	//Assuming that number is between -0x7FFF to 0x7FFE
 	protected convertToUnsigned(n: number): number{
-		return n >= 0 ? n : 0xFFFF - n;
+		return n >= 0 ? n : (0xFFFF - n);
 	}
 
 	protected warn(r: Result){
