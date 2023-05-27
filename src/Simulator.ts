@@ -41,7 +41,7 @@ export class LC3Simulator extends EventEmitter{
 	mcr: number = 0; //TODO
 
 	public file: vscode.TextDocument | undefined;
-	protected currentLine: number = -1;
+	public currentLine: number = -1;
 	protected processed: boolean = false;
 
 	//Map .ORIG x#### locations to file line numbers (for return/jumping/conditionals)

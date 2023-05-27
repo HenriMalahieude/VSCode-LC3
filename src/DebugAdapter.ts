@@ -46,6 +46,8 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		response.body = response.body || {};
 
 		//NOTE: Later we can implement "step back" functionality
+		//response.body.supportsBreakpointLocationsRequest = true;
+		response.body.supportsSetVariable = true;
 		this.sendResponse(response);
 
 		//this.sendEvent(new DAP.InitializedEvent());
@@ -232,10 +234,10 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 							contents = emptyLC3Data();
 							stringMachine = contents.assembly + " (0x?)";
 						}else{
-							stringMachine = contents.assembly + " (" + String(this.formatNumber(contents.machine)) + ")";
+							stringMachine = contents.assembly + " (" + this.formatNumber(contents.machine) + ")";
 						}
 						
-						vArr.push({name: this.formatNumber(memoryHead + i), type: "string", value: stringMachine, variablesReference: 0});
+						vArr.push({name: this.formatAddress(memoryHead + i), type: "string", value: stringMachine, variablesReference: 0});
 					}
 
 					response.body = {
@@ -266,6 +268,57 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		}
 		this.sendResponse(response);
 	}
+
+	protected setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments): void {
+		if (this._debugger == undefined) return;
+
+		if (args.name.startsWith("R")){ //Edit Register
+			let n = Number(args.name.at(1));
+			let v = Number(args.value);
+			if (!Number.isNaN(n) && !Number.isNaN(v)){
+				this._debugger.registers[n] = v;
+				response.body = {value: this.formatNumber(v)}
+			}
+			
+		}else if (args.name == "PSR" || args.name == "MCR"){ //System Set Registers
+			return this.sendErrorResponse(response, {
+				id: 1203,
+				format: "PSR and MCR are system set registers not open for editing.",
+				showUser: true
+			});
+		}else if (args.name == "PC"){
+			let v = Number(args.value)
+			if (!Number.isNaN(v)){
+				let location = this._debugger.memory.get(v);
+				if (location){
+					this._debugger.pc = v-1;
+					this._debugger.currentLine = location.location.fileIndex-1;
+					response.body = {value: this.formatNumber(v)};
+					this.sendEvent(new DAP.InvalidatedEvent(undefined, lc3DebugAdapter.threadID, 0));
+				}
+			}
+		}else if (args.name.startsWith("0x") || args.name.startsWith("#")){ //Edit memory
+			let address = Number(args.name);
+			let v = Number(args.value);
+			if (!Number.isNaN(address) && !Number.isNaN(v)){
+				let m = this._debugger.memory.get(address);
+				if (m){
+					m.machine = v;
+					this._debugger.memory.set(address, m);
+					response.body = {value: m.assembly + " (" + this.formatNumber(v) + ")"}
+				}
+			}
+		}else{
+			return this.sendErrorResponse(response, {
+				id: 1204,
+				format: "Editing this 'variable' unavailable.",
+				showUser: true
+			})
+		}
+
+		this.sendResponse(response);
+	}
+
 	protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments, request?: DebugProtocol.Request | undefined): void {
 		
 		response.body = {
@@ -345,7 +398,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 	//----------Helper Functions
 	private formatAddress(x: number, pad = 8) {
-		return this._addressesInHex ? '0x' + x.toString(16) : x.toString(10);
+		return this._addressesInHex ? ('0x' + x.toString(16)) : ("#" + x.toString(10));
 	}
 
 	private formatNumber(x: number) {
