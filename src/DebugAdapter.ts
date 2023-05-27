@@ -405,7 +405,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		if (this._valuesInHex){
 			let nn = x;
 			if (nn < 0){
-				nn += 16 * 16 * 16 * 16; //Since it's negative we don't want 0x-5, we want 0xFFFB;
+				nn = 0xFFFF + x + 1; //Since it's negative we don't want 0x-5, we want 0xFFFB;
 			}
 			return ('0x' + nn.toString(16).toLocaleUpperCase());
 		}
