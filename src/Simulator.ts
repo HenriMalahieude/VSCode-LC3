@@ -1153,6 +1153,9 @@ export class LC3Simulator extends EventEmitter{
 				numerical = Number(arg3?.substring(1,2))
 				rFlag = 0;
 			}
+
+			if (!this.bitLimit(numerical, 5)) numerical = NaN;
+
 			rFlag *= Math.pow(2, 5);
 			return (opc) * Math.pow(2, 12) + DR + SR1 + rFlag + numerical;
 		}else if (opcode.startsWith("BR")){
@@ -1170,6 +1173,8 @@ export class LC3Simulator extends EventEmitter{
 				pcoffset9 = ~pcoffset9 + 1;
 			}
 
+			if (!this.bitLimit(pcoffset9, 9)) pcoffset9 = NaN;
+
 			return flags + pcoffset9;
 		}else if (opcode == "JMP"){
 			let opc = 0b1100
@@ -1181,6 +1186,8 @@ export class LC3Simulator extends EventEmitter{
 			let obj = (arg1) ? this.labelLocations.get(arg1) : {pc: NaN};
 			let direction = (obj) ? obj.pc : NaN;
 			let pcoffset11 = direction - location;
+
+			if (!this.bitLimit(pcoffset11, 5)) pcoffset11 = NaN;
 
 			return opc * Math.pow(2, 11) + pcoffset11;
 		}else if (opcode == "JSRR"){
@@ -1202,6 +1209,8 @@ export class LC3Simulator extends EventEmitter{
 				pcoffset9 = (arg2) ? Number(arg2) : NaN; //NOTE: IDK why I have this here because I block direct encoding for execution
 			}
 
+			if (!this.bitLimit(pcoffset9, 5)) pcoffset9 = NaN;
+
 			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + pcoffset9;
 		}else if (opcode == "LDR" || opcode == "STR"){
 			let opc = (opcode == "LDR") ? 0b0110 : 0b0111;
@@ -1209,6 +1218,8 @@ export class LC3Simulator extends EventEmitter{
 			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
 			let br = (arg2) ? Number(arg2.at(1)) : NaN;
 			let offset = (arg3) ? this.convertNumber(arg3) : NaN;
+
+			if (!this.bitLimit(offset, 6)) offset = NaN;
 
 			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + br * Math.pow(2, 6) + offset;
 		}else if (opcode == "NOT"){
@@ -1232,6 +1243,8 @@ export class LC3Simulator extends EventEmitter{
 			}else{
 				pcoffset9 = (arg2) ? Number(arg2) : NaN; //NOTE: IDK why I have this here because I block direct encoding for execution
 			}
+
+			if (!this.bitLimit(pcoffset9, 9)) pcoffset9 = NaN;
 
 			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + pcoffset9;
 		}else if (opcode == "TRAP" || opcode == "HALT" || opcode == "PUTS" || opcode == "GETC" || opcode == "OUT" || opcode == "IN"){
