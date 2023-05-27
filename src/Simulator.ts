@@ -495,6 +495,24 @@ export class LC3Simulator extends EventEmitter{
 		if (manip.startsWith(";") || manip.length <= 0) return {success: true};
 
 		this.pc++;
+
+		//Safety checks in case they add lines or change anything
+		let memEntry = this.memory.get(this.pc);
+		//NOTE: If we wanna remove this, we can just have the "Variable Set Function" run preprocess again, and then set the PC and fileIndex there
+		if (memEntry == undefined){ 
+			return {
+				success: false, 
+				message: "Line of Code was not detected in memory.\n(Did you add a line during simulation? Preprocessor didn't catch it, try restarting debugger before running the line.)", 
+				line: this.currentLine+1
+			};
+		}else if (memEntry.assembly != manip){
+			return {
+				success: false,
+				message: "Line of Code did not match memory.\n(Did you change something during simulation? Preprocessor didn't catch it, try restarting debugger before running the line.)",
+				line: this.currentLine+1
+			}
+		}
+
 		//Macros
 		if (manip.match(/\s*GETC\s*/gm)){
 			return await this.TRAP("TRAP X20");
