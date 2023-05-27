@@ -7,7 +7,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		this.resetSimulationState();
 	}
 
-	public runAllTests(){
+	public async runAllTests(){
 		console.log("Running Simulator Test Suite")
 		let testState = {"TOTAL": 0, "FAIL": 0};
 
@@ -19,10 +19,13 @@ export class SimulationTester extends Sim.LC3Simulator {
 			}
 		}
 
-		console.log("\tPreprocessor Test");
+		console.log("\tPreprocessor Test:");
 		check("Preprocess", this.testPreprocess());
+
+		console.log("\tMachine Code Translator Test:")
+		check("Machine Code", this.testMachineCode());
 		
-		console.log("\tOp-Code Test");
+		console.log("\tOp-Code Test:");
 		
 		check("ADD", this.testADD());
 		check("AND", this.testAND());
@@ -39,7 +42,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		check("ST", this.testST());
 		check("STI", this.testSTI());
 		check("STR", this.testSTR());
-		check("TRAP", this.testTRAP());
+		check("TRAP", await this.testTRAP());
 
 		console.log("Simulator Test Suite Success: (" + (testState["TOTAL"] - testState["FAIL"]) + "/" + testState["TOTAL"] + ")")
 	}
@@ -68,10 +71,11 @@ export class SimulationTester extends Sim.LC3Simulator {
 		if (item == undefined) return {success: false, message: "Missing Command For Test 4"};
 		if (!item || item.assembly != "AND R0, R0, #0" || item.location.pc != 0x3000) return {success: false, message: "Incorrectly formatted memory entry for Test 4"}
 
-		let test5 = smallTestor(this, ".ORIG x3000", "AND R0, R0, #0", ".END", ".ORIG x4000", "AND R0, R0, #0", ".END")
+		let test5 = smallTestor(this, ".ORIG x3000", "AND R0, R0, #0", ".END", ".ORIG x4000", "LABEL AND R0, R0, #0", ".END")
 		if (!test5.success) return test5;
 		if (this.memory.get(0x3000) == undefined) return {success: false, message: "Missing Command 1 For Test 5"}
 		if (this.memory.get(0x4000) == undefined) return {success: false, message: "Missing Command 2 For Test 5"}
+		if (this.labelLocations.get("LABEL") == undefined || this.labelLocations.get("LABEL")?.pc != 0x4000) return {success: false, message: "Positional Label not saved Properly."}
 
 		//Mega Pseudo Tester
 		let test6 = smallTestor(this, ".ORIG x3000", "LD R0, TEST", "HALT", "TEST .FILL #0", "TEST1 .STRINGZ \"Hello, World!\"", "TEST2 .BLKW 10", ".END")
@@ -152,7 +156,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 
 		//Test Negative Ands
 		this.resetSimulationState();
-		this.registers[3] = -1; //Equivalent to 0xFFFE
+		this.registers[3] = ~1; //Equivalent to 0xFFFE
 		this.registers[4] = 1;
 		let test1 = this.AND("AND R0, R3, R4");
 		if (!test1.success) return test1;
@@ -448,19 +452,70 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testTRAP(): Sim.Result{
+	private async testTRAP(): Promise<Sim.Result>{
 		this.resetSimulationState();
 
-		let test0 = this.TRAP("TRAP X25");
+		let test0 = await this.TRAP("TRAP X25");
 		if (!test0.success) return test0;
 		if (!this.halted) return {success: false, message: "Failed to HALT program/computer."};
 
-		//NOTE: Can't really test the other stuff.....
+		//TODO: Test the other TRAPS
 
 		return {success: true};
 	}
 
-	//TODO: Test Macros
+	//TODO: Test Machine Code Converter
+	private testMachineCode(): Sim.Result{
+		let mm = "";
+
+		if (this.convertCommandToMachine(0x3000, "ADD", "R1", "R3", "x3") != 0x12C3) mm = mm.concat("Failed ADD Encoding 1\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "ADD", "R2", "R2", "R2") != 0x1482) mm = mm.concat("Failed ADD Encoding 2\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "AND", "R2", "R2", "R2") != 0x5482) mm = mm.concat("Failed AND Encoding\n\t\t\t");
+
+		if (this.convertCommandToMachine(0x3000, "NOT", "R3", "R4", undefined) != 0x973F) mm = mm.concat("Failed NOT Encoding\n\t\t\t");
+
+		this.resetSimulationState();
+		this.labelLocations.set("LABEL", {pc: 0x3000, fileIndex: -1});
+		if (this.convertCommandToMachine(0x3001, "BRNZ", "LABEL", undefined, undefined) != 0x0DFE) mm.concat("Failed BRnz Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3001, "BRN", "LABEL", undefined, undefined) != 0x09FE) mm = mm.concat("Failed BRn Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3001, "BRNZP", "LABEL", undefined, undefined) != 0x0FFE) mm = mm.concat("Failed BRnzp Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x2FFF, "BRZ", "LABEL", undefined, undefined) != 0x0400) mm = mm.concat("Failed BRz Encoding\n\t\t\t");
+
+		if (this.convertCommandToMachine(0x3000, "JMP", "R6", undefined, undefined) != 0xC180) mm = mm.concat("Failed JMP Encoding\n\t\t\t");
+
+		if (this.convertCommandToMachine(0x3001, "JSR", "LABEL", undefined, undefined) != 0x4FFE) mm = mm.concat("Failed JSR Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "JSRR", "R5", undefined, undefined) != 0x4140) mm = mm.concat("Failed JSRR Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "RET", undefined, undefined, undefined) != 0xC1C0) mm = mm.concat("Failed RET Encoding\n\t\t\t");
+		
+		this.resetSimulationState();
+		this.labelLocations.set("LABEL", {pc: 0x300F, fileIndex: -1});
+		if (this.convertCommandToMachine(0x3000, "LD", "R7", "LABEL", undefined) != 0x2E0E) mm = mm.concat("Failed LD Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "LDI", "R7", "LABEL", undefined) != 0xAE0E) mm = mm.concat("Failed LDI Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "LEA", "R7", "LABEL", undefined) != 0xEE0E) mm = mm.concat("Failed LEA Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "ST", "R7", "LABEL", undefined) != 0x3E0E) mm = mm.concat("Failed ST Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "STI", "R7", "LABEL", undefined) != 0xBE0E) mm = mm.concat("Failed ST Encoding\n\t\t\t");
+
+		if (this.convertCommandToMachine(0x3000, "LDR", "R5", "R7", "#1") != 0x6BC1) mm = mm.concat("Failed LDR Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "STR", "R5", "R7", "#1") != 0x7BC1) mm = mm.concat("Failed STR Encoding\n\t\t\t");
+		
+		this.resetSimulationState();
+		if (this.convertCommandToMachine(0x3000, "TRAP", "X25", undefined, undefined) != 0xF025) mm = mm.concat("Failed TRAP x25 Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "HALT", undefined, undefined, undefined) != 0xF025) mm = mm.concat("Failed HALT (x25) Encoding\n\t\t\t");
+
+		if (this.convertCommandToMachine(0x3000, "TRAP", "X23", undefined, undefined) != 0xF023) mm = mm.concat("Failed TRAP x23 Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "IN", undefined, undefined, undefined) != 0xF023) mm = mm.concat("Failed IN (x23) Encoding\n\t\t\t");
+
+		if (this.convertCommandToMachine(0x3000, "TRAP", "X22", undefined, undefined) != 0xF022) mm = mm.concat("Failed TRAP x22 Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "PUTS", undefined, undefined, undefined) != 0xF022) mm = mm.concat("Failed PUTS (x22) Encoding\n\t\t\t");
+
+		if (this.convertCommandToMachine(0x3000, "TRAP", "X21", undefined, undefined) != 0xF021) mm = mm.concat("Failed TRAP x21 Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "OUT", undefined, undefined, undefined) != 0xF021) mm = mm.concat("Failed OUT (x21) Encoding\n\t\t\t");
+
+		if (this.convertCommandToMachine(0x3000, "TRAP", "X20", undefined, undefined) != 0xF020) mm = mm.concat("Failed TRAP x20 Encoding\n\t\t\t");
+		if (this.convertCommandToMachine(0x3000, "GETC", undefined, undefined, undefined) != 0xF020) mm = mm.concat("Failed GETC (x20) Encoding\n\t\t\t");
+		
+		return {success: mm == "", message: mm};
+	}
 	
 	//Helper Functions
 	private resetSimulationState(){
