@@ -27,7 +27,7 @@ export function emptyLC3Data(): LC3Data{
 	}
 }
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export class LC3Simulator extends EventEmitter{
 	status: Result = {success: true};
@@ -36,7 +36,7 @@ export class LC3Simulator extends EventEmitter{
 	registers: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
 	condition_codes = {"N": false, "Z": true, "P": false}; //TODO: See what the condition codes are initialized to in LC3Tools
 	memory: Map<number, LC3Data>; //TODO: Fill with System Memory
-	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the current command instead of the next
+	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the last command instead of the next
 	psr: number = 0; //TODO
 	mcr: number = 0; //TODO
 
@@ -1019,6 +1019,7 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	protected async TRAP(line: string): Promise<Result>{
+		const waitCount: number = 250;
 		let command = line.split(" ");
 		let numerical = this.convertNumber(command[1].toLocaleUpperCase());
 
@@ -1029,7 +1030,7 @@ export class LC3Simulator extends EventEmitter{
 
 			while (v == undefined){
 				this.stdinExpect = true;
-				await sleep(250);
+				await sleep(waitCount);
 				v = this.stdin.at(0);
 			}
 
@@ -1040,7 +1041,7 @@ export class LC3Simulator extends EventEmitter{
 		} else if (numerical == 0x21){ //OUT: Output one character
 			this.stdout.push(this.registers[0]);
 		} else if (numerical == 0x22){ //PUTS: Output an entire string to console
-			for (let i = 0; i < 100; i++){
+			for (let i = 0; i < 250; i++){
 				let out = this.memory.get(this.registers[0] + i);
 				
 				if (out == undefined) return {success: false, message: "Attempted to PUTS invalid information. Halting simulation."};
@@ -1051,14 +1052,14 @@ export class LC3Simulator extends EventEmitter{
 					return {success: true};
 				}
 			}
-			return {success: false, message: "Reached PUTS string size limit (100). Halting Simulation"};
+			return {success: false, message: "Reached PUTS string size limit (250). Halting Simulation"};
 		} else if (numerical == 0x23){ //IN: Read and echo one character
 			let v = this.stdin.at(0);
 			if (v == undefined) this.emit("stdin");
 
 			while (v == undefined){
 				this.stdinExpect = true;
-				await sleep(250);
+				await sleep(waitCount);
 				v = this.stdin.at(0);
 			}
 

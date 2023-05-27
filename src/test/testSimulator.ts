@@ -459,12 +459,59 @@ export class SimulationTester extends Sim.LC3Simulator {
 		if (!test0.success) return test0;
 		if (!this.halted) return {success: false, message: "Failed to HALT program/computer."};
 
-		//TODO: Test the other TRAPS
+		this.resetSimulationState();
+		this.stdin.push(44);
+		this.stdin.push(43);
+		let test1 = await this.TRAP("TRAP X20");
+		if (!test1.success) return test1;
+		if (this.registers[0] != 44) return {success: false, message: "Failed to GETC"};
+
+		this.resetSimulationState();
+		let test11 = this.TRAP("TRAP X20"); //this will be asynchronous
+
+		for (let i = 0; i < 20; i++){
+			if (this.isExpectingInput()) break;
+			await Sim.sleep(250);
+		}
+
+		if (this.isExpectingInput()){
+			this.addNextStdIn(44);
+		}else{
+			return {success: false, message: "GETC asynchronous infinite loop"}
+		}
+
+		let test111 = await test11;
+		if (!test111.success) return test111;
+		if (this.registers[0] != 44) return {success: false, message: "Failed asynchronous GETC"};
+
+		this.resetSimulationState();
+		this.registers[0] = 452;
+		let test2 = await this.TRAP("TRAP X21");
+		if (!test2.success) return test2;
+		if (this.stdout.at(0) != 452) return {success: false, message: "Failed to OUT"};
+		
+		this.resetSimulationState();
+		let test30 = this.preprocess([".ORIG x3000", "LEA R0, LABEL", "TRAP x22", "HALT", "LABEL .STRINGZ \"Word!\"", ".END"]);
+		if (!test30.success) return test30;
+		let test31 = this.LEA("LEA R0, LABEL");
+		if (!test31.success) return test31;
+		let test32 = await this.TRAP("TRAP X22");
+		if (!test32.success) return test32;
+		for (let i = 0; i < "Word!".length; i++){
+			if (this.stdout.at(i) != "Word!".charCodeAt(i)) return {success: false, message: "PUTS Failed: Char " + String(i) + " does not match in 'Word!'"};
+		}
+
+		this.resetSimulationState();
+		this.stdin.push(45);
+		let test4 = await this.TRAP("TRAP X23");
+		if (!test4.success) return test4;
+		if (this.stdin.length > 0) return {success: false, message: "IN failed to lower STDIN"};
+		if (this.stdout.at(0) != 45) return {success: false, message: "IN failed to increrase STDOUT"};
+		if (this.registers[0] != 45) return {success: false, message: "Failed to IN"};
 
 		return {success: true};
 	}
 
-	//TODO: Test Machine Code Converter
 	private testMachineCode(): Sim.Result{
 		let mm = "";
 
@@ -534,5 +581,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		
 		this.subroutineLocations.clear();
 		this.labelLocations.clear();
+		this.stdin = [];
+		this.stdout = [];
 	}
 }
