@@ -656,20 +656,11 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag."}
 		}
 
-		if (command[3].startsWith("R")){
-			let temp = Number(command[3].substring(1, 2));
-
-			if (!Number.isNaN(temp) && temp >= 0 && temp <= 7){
-				numerical = this.registers[temp];
-			}else{
-				return {success: false, message: "Second Source Register is NaN or out of bounds."}
-			}
-		}
-
 		if (!this.bitLimit(numerical, 5)){
 			return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
 		}
 		
+		//console.log(this.convertToUnsigned(this.registers[sourIndex]).toString(2), " - ", this.convertToUnsigned(numerical).toString(2))
 		this.registers[destIndex] = this.convertToUnsigned(this.registers[sourIndex]) & this.convertToUnsigned(numerical); //Bitwise And
 
 		this.updateConditionCodes(destIndex);
@@ -1078,6 +1069,8 @@ export class LC3Simulator extends EventEmitter{
 			this.stdinExpect = false;
 		} else if (numerical == 0x25){ //HALT: Stop computer
 			this.halted = true;
+		} else {
+			return {success: false, message: "Unknown trap vector. Ending simulation."};
 		}
 
 		return {success: true};
@@ -1162,18 +1155,19 @@ export class LC3Simulator extends EventEmitter{
 			//let opc = 0b0000;
 			let flags = 0;
 			if (opcode.indexOf("N") > 1) flags += 0b100;
-			if (opcode.indexOf("Z") > 2) flags += 0b010;
-			if (opcode.indexOf("P") > 3) flags += 0b001;
+			if (opcode.indexOf("Z") > 1) flags += 0b010;
+			if (opcode.indexOf("P") > 1) flags += 0b001;
 			flags *= Math.pow(2, 9);
 
 			let obj = (arg1) ? this.labelLocations.get(arg1) : {pc: 0};
 			let direction = (obj) ? obj.pc : 0;
-			let pcoffset9 = direction - location;
-			if (pcoffset9 < 0){ //NOTE: Not sure if negative numbers should be fixed or not
-				pcoffset9 = ~pcoffset9 + 1;
-			}
+			let pcoffset9 = direction - (location + 1); //because technically pc is next line, but this version has it at last line
 
-			if (!this.bitLimit(pcoffset9, 9)) pcoffset9 = NaN;
+			if (!this.bitLimit(pcoffset9, 9)) pcoffset9 = 0;
+
+			if (pcoffset9 < 0){ //NOTE: Not sure if negative numbers should be fixed or not
+				pcoffset9 = 0b111111111 + pcoffset9 + 1;
+			}
 
 			return flags + pcoffset9;
 		}else if (opcode == "JMP"){
@@ -1181,22 +1175,28 @@ export class LC3Simulator extends EventEmitter{
 			let register = (arg1) ? Number(arg1.at(1)) : NaN;
 			return opc * Math.pow(2, 12) + register * Math.pow(2, 6);
 		}else if (opcode == "JSR"){
-			let opc = 0b01001; //2^11
+			let opc = 0b01001; //Note extra 1 is actually Label/Register Flag
 
 			let obj = (arg1) ? this.labelLocations.get(arg1) : {pc: NaN};
 			let direction = (obj) ? obj.pc : NaN;
-			let pcoffset11 = direction - location;
+			let pcoffset11 = direction - (location + 1);
 
-			if (!this.bitLimit(pcoffset11, 5)) pcoffset11 = NaN;
+			if (!this.bitLimit(pcoffset11, 11)) pcoffset11 = 0;
+
+			if (pcoffset11 < 0){
+				pcoffset11 = 0b11111111111 + pcoffset11 + 1;
+			}
 
 			return opc * Math.pow(2, 11) + pcoffset11;
 		}else if (opcode == "JSRR"){
 			let opc = 0b0100;
 			let register = (arg1) ? Number(arg1.at(1)) : NaN;
 			return opc * Math.pow(2, 12) + register * Math.pow(2, 6);
-		}else if (opcode == "LD" || opcode == "LDI" || opcode == "LEA"){
+		}else if (opcode == "LD" || opcode == "LDI" || opcode == "LEA" || opcode == "ST" || opcode == "STI"){
 			let opc = (opcode == "LD") ? 0b0010 : 0b1010;
 			if (opcode == "LEA") opc = 0b1110;
+			if (opcode == "ST") opc = 0b0011;
+			if (opcode == "STI") opc = 0b1011;
 
 			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
 			
@@ -1204,12 +1204,16 @@ export class LC3Simulator extends EventEmitter{
 			let obj = (arg2) ? this.labelLocations.get(arg2) : undefined;
 			if (obj != undefined){
 				let direction = (obj) ? obj.pc : NaN;
-				pcoffset9 = direction - location;
+				pcoffset9 = direction - (location + 1);
 			}else{
 				pcoffset9 = (arg2) ? Number(arg2) : NaN; //NOTE: IDK why I have this here because I block direct encoding for execution
 			}
 
-			if (!this.bitLimit(pcoffset9, 5)) pcoffset9 = NaN;
+			if (!this.bitLimit(pcoffset9, 9)) pcoffset9 = 0;
+
+			if (pcoffset9 < 0){
+				pcoffset9 = 0b111111111 + pcoffset9 + 1;
+			}
 
 			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + pcoffset9;
 		}else if (opcode == "LDR" || opcode == "STR"){
@@ -1221,6 +1225,10 @@ export class LC3Simulator extends EventEmitter{
 
 			if (!this.bitLimit(offset, 6)) offset = NaN;
 
+			if (offset < 0){
+				offset = 0b111111 + offset + 1;
+			}
+
 			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + br * Math.pow(2, 6) + offset;
 		}else if (opcode == "NOT"){
 			let opc = 0b1001;
@@ -1230,23 +1238,6 @@ export class LC3Simulator extends EventEmitter{
 			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + sr * Math.pow(2, 6) + 0b111111;
 		}else if (opcode == "RET"){
 			return 0b1100000111000000;
-		}else if (opcode == "ST" || opcode == "STI"){
-			let opc = (opcode == "ST") ? 0b0011 : 0b1011;
-
-			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
-			
-			let pcoffset9;
-			let obj = (arg2) ? this.labelLocations.get(arg2) : undefined;
-			if (obj != undefined){
-				let direction = (obj) ? obj.pc : NaN;
-				pcoffset9 = direction - location;
-			}else{
-				pcoffset9 = (arg2) ? Number(arg2) : NaN; //NOTE: IDK why I have this here because I block direct encoding for execution
-			}
-
-			if (!this.bitLimit(pcoffset9, 9)) pcoffset9 = NaN;
-
-			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + pcoffset9;
 		}else if (opcode == "TRAP" || opcode == "HALT" || opcode == "PUTS" || opcode == "GETC" || opcode == "OUT" || opcode == "IN"){
 			let opc = 0b1111;
 
@@ -1259,6 +1250,12 @@ export class LC3Simulator extends EventEmitter{
 				if (opcode == "GETC") numerical = 0x20;
 				if (opcode == "OUT") numerical = 0x21;
 				if (opcode == "IN") numerical = 0x23;
+			}
+
+			//console.log(numerical);
+
+			if (numerical < 0){
+				numerical = 0x111111111111 - numerical + 1;
 			}
 
 			return opc * Math.pow(2, 12) + numerical;
@@ -1285,7 +1282,7 @@ export class LC3Simulator extends EventEmitter{
 		}
 	}
 
-	//False if out of bounds of limit
+	//False if out of bounds of limit, for signed numbers only
 	protected bitLimit(n: number, limit:number): boolean{
 		let posLim:number = (Math.pow(2, limit-1)) - 1;
 		let negLim = -1 * (Math.pow(2, limit-1));
@@ -1297,7 +1294,12 @@ export class LC3Simulator extends EventEmitter{
 
 	//Assuming that number is between -0x7FFF to 0x7FFE
 	protected convertToUnsigned(n: number): number{
-		return n >= 0 ? n : (0xFFFF - n);
+		if (n >= 0){
+			return n;
+		}else{
+			//console.log((0xFFFF).toString(2), "-", n.toString(2), "+", 1, "=", (0xFFFF - n + 1).toString(2));
+			return 0xFFFF + n + 1;
+		}
 	}
 
 	protected warn(r: Result){
