@@ -37,7 +37,7 @@ export class LC3Simulator extends EventEmitter{
 	protected condition_codes = {"N": false, "Z": true, "P": false};
 	memory: Map<number, LC3Data>; //TODO: Fill with System Memory
 	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the last command instead of the next
-	psr: number = 0; //[15] = Privelege, [2:0] = NZP
+	psr: number = 0x8002; //[15] = Privelege, [2:0] = NZP
 	mcr: number = 0; //Located at 0xFFFE
 	mcc: number = 0; //Located at 0xFFFF
 
@@ -1319,9 +1319,9 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	protected UpdatePSR(){
-		this.pc = 0x8000; //We will never set the privilege of the system to Supervisor, so this is fine. Nor do we need any Interrupt stuff
-		if (this.condition_codes.N) this.pc += 0b100;
-		if (this.condition_codes.Z) this.pc += 0b010;
-		if (this.condition_codes.P) this.pc += 0b001;
+		this.psr = 0x8000; //We will never set the privilege of the system to Supervisor, so this is fine. Nor do we need any Interrupt stuff
+		if (this.condition_codes.N) this.psr += 0b100;
+		if (this.condition_codes.Z) this.psr += 0b010;
+		if (this.condition_codes.P) this.psr += 0b001;
 	}
 }
