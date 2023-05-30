@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import {InlineAdapterFactory} from './DebugFactory';
 
@@ -8,16 +9,34 @@ export function activateDebugging(ctx: vscode.ExtensionContext, otc: vscode.Outp
 
 	vscode.commands.registerCommand('ucr-lc3.debug.getProgramName', config => {
 		return vscode.window.showInputBox({
-		  placeHolder: 'Please enter the name of an object file in the workspace folder',
-		  value: './Folder/Program.asm or ./Program.asm'
+			placeHolder: 'Please enter the name of an object file in the workspace folder',
+			value: './Folder/Program.asm or ./Program.asm'
 		});
-	  },
-	  vscode.commands.registerCommand('ucr-lc3.debug.toggleFormatting', (variable) => {
+	}),
+
+	vscode.commands.registerCommand('ucr-lc3.debug.getProgramNameInference', config => {
+		let v = vscode.window.activeTextEditor;
+		let ret: string | undefined = (v) ? vscode.workspace.asRelativePath(v.document.uri, false) : undefined;
+
+		console.log(v, ret)
+
+		if (v == undefined){
+			console.log("Bruh")
+			return vscode.window.showInputBox({
+				placeHolder: 'Please enter the name of an object file in the workspace folder',
+				value: './Folder/Program.asm or ./Program.asm'
+			});
+		}
+		
+		return ret
+	}),
+
+	vscode.commands.registerCommand('ucr-lc3.debug.toggleFormatting', (variable) => {
 		const ds = vscode.debug.activeDebugSession;
 		if (ds) {
 			ds.customRequest('toggleFormatting');
 		}
-	}));
+	});
 
 	const provider = new ConfigurationProvider();
 	ctx.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('lcsim', provider));
@@ -29,7 +48,7 @@ export function activateDebugging(ctx: vscode.ExtensionContext, otc: vscode.Outp
 					name: "LC3 Simulator (Dynamic)",
 					request: "launch",
 					type: "lcsim",
-					program: "${workspaceFolder}/${command:ucr-lc3.debug.getProgramName}"
+					program: "${workspaceFolder}/${command:ucr-lc3.debug.getProgramNameInference}"
 				},
 			];
 		}
@@ -44,8 +63,6 @@ class ConfigurationProvider implements vscode.DebugConfigurationProvider {
 	 * e.g. add all missing attributes to the debug configuration.
 	 */
 	resolveDebugConfiguration(folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration, token?: vscode.CancellationToken): vscode.ProviderResult<vscode.DebugConfiguration> {
-
-		// if launch.json is missing or empty
 		if (!config.type && !config.request && !config.name) {
 			const editor = vscode.window.activeTextEditor;
 			if (editor && editor.document.languageId === 'LC3') {
@@ -60,7 +77,7 @@ class ConfigurationProvider implements vscode.DebugConfigurationProvider {
 			return vscode.window.showInformationMessage("Cannot find a program to debug").then(_ => {
 				return undefined;	// abort launch
 			});
-		}
+		} //*/
 
 		return config;
 	}

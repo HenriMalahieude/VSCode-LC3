@@ -73,7 +73,7 @@
 					}
 				],
 				"variables": {
-					"AskForProgramName": "ucr-lc3.debug.getProgramName"
+					"AskForProgramName": "ucr-lc3.debug.getProgramNameInference"
 				}
 			}
 		],
