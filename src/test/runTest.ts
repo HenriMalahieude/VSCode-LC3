@@ -1,4 +1,3 @@
-import { Test } from 'mocha';
 import { SimulationTester } from './testSimulator'
 
 async function main() {

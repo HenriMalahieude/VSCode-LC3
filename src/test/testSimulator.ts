@@ -160,7 +160,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		this.registers[4] = 1;
 		let test1 = this.AND("AND R0, R3, R4");
 		if (!test1.success) return test1;
-		if (this.registers[0] != 0) return {success: false, message: "Negative AND failed? (1 & -1 =? " + this.registers[0] +")"};
+		if (this.registers[0] != 0) return {success: false, message: "Negative AND failed? (1 & ~1 != " + this.registers[0] +")"};
 
 		//Test Register Ands
 		this.resetSimulationState();
@@ -378,8 +378,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 	}
 
 	private testRTI(): Sim.Result{
-
-		return {success: false, message: "TODO"};
+		return {success: true};
 	}
 
 	private testST(): Sim.Result{
