@@ -34,11 +34,12 @@ export class LC3Simulator extends EventEmitter{
 	halted: boolean = false;
 
 	registers: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
-	condition_codes = {"N": false, "Z": true, "P": false}; //TODO: See what the condition codes are initialized to in LC3Tools
+	protected condition_codes = {"N": false, "Z": true, "P": false};
 	memory: Map<number, LC3Data>; //TODO: Fill with System Memory
 	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the last command instead of the next
-	psr: number = 0; //TODO
-	mcr: number = 0; //TODO
+	psr: number = 0; //[15] = Privelege, [2:0] = NZP
+	mcr: number = 0; //Located at 0xFFFE
+	mcc: number = 0; //Located at 0xFFFF
 
 	public file: vscode.TextDocument | undefined;
 	public currentLine: number = -1;
@@ -280,8 +281,8 @@ export class LC3Simulator extends EventEmitter{
 						codeAllowed = true;
 						if (Number.isNaN(currentLocation)){
 							return {success: false, message: "Could not convert number supplied to a valid location in memory.\n(Location must be specified in hex (x))", line: i};
-						}else if (currentLocation < 0x3000 || currentLocation > 0xFE00){
-							return {success: false, message: "Cannot populate program within system reserved memory\n(Reserved memory [0x0000, 0x3000) && (0xFE00, 0xFFFF])", line: i};
+						}else if (currentLocation < 0x3000 || currentLocation >= 0xFE00){
+							return {success: false, message: "Cannot populate program within system reserved memory\n(Reserved memory [0x0000, 0x3000) && [0xFE00, 0xFFFF])", line: i};
 						}
 	
 						if (command[1].startsWith("B") || command[1].startsWith("#")) this.warn({success: false, line: i, message: ".ORIG pseudo ops should provide number in hexadecimal format (x).", context: "Preprocessing Warning"})
@@ -495,6 +496,8 @@ export class LC3Simulator extends EventEmitter{
 		if (manip.startsWith(";") || manip.length <= 0) return {success: true};
 
 		this.pc++;
+		this.IncrementMCC();
+		this.UpdatePSR();
 
 		//Safety checks in case they add lines or change anything
 		let memEntry = this.memory.get(this.pc);
@@ -748,7 +751,7 @@ export class LC3Simulator extends EventEmitter{
 		}
 
 		let addr = this.registers[destIndex];
-		if (addr > 0xfe00 || addr < 0x3000){
+		if (addr >= 0xFE00 || addr < 0x3000){
 			return {success: false, message: "Attempting to jump to system reserved memory without System Priviliges. Forcing simulation end."};
 		}
 
@@ -855,7 +858,7 @@ export class LC3Simulator extends EventEmitter{
 		if (!this.bitLimit(numerical, 6)) return {success: false, message: "Offset not within 6 bit limit\n[-32, 31]"};
 		
 		let address = this.registers[registerIndex2] + numerical;
-		if (address < 0x3000 || address > 0xFE00) return {success: false, message: "Attempted to load system reserved memory."};
+		if (address < 0x3000 || address >= 0xFE00) return {success: false, message: "Attempted to load system reserved memory."};
 
 		let data = this.memory.get(address);
 		if (!data) {
@@ -1003,7 +1006,7 @@ export class LC3Simulator extends EventEmitter{
 		if (!this.bitLimit(numerical, 6)) return {success: false, message: "Offset not within 6 bit limit\n[-32, 31]"};
 		
 		let address = this.registers[registerIndex2] + numerical;
-		if (address < 0x3000 || address > 0xFE00) return {success: false, message: "Attempted to set system reserved memory."};
+		if (address < 0x3000 || address >= 0xFE00) return {success: false, message: "Attempted to set system reserved memory."};
 
 		let data = this.memory.get(address);
 		if (data == undefined){
@@ -1305,5 +1308,20 @@ export class LC3Simulator extends EventEmitter{
 
 	protected warn(r: Result){
 		this.emit("warning", r);
+	}
+
+	protected IncrementMCC(){
+		this.mcc++;
+		let entry = emptyLC3Data();
+		entry.machine = this.mcc;
+
+		this.memory.set(0xFFFF, entry)
+	}
+
+	protected UpdatePSR(){
+		this.pc = 0x8000; //We will never set the privilege of the system to Supervisor, so this is fine. Nor do we need any Interrupt stuff
+		if (this.condition_codes.N) this.pc += 0b100;
+		if (this.condition_codes.Z) this.pc += 0b010;
+		if (this.condition_codes.P) this.pc += 0b001;
 	}
 }

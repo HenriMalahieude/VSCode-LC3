@@ -246,7 +246,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 
 					response.body.variables = vArr;
 				}else{
-					let whereStackEnds = 0xFE00;
+					let whereStackEnds = 0xFE00 - 1;
 					for (let i = 0; i < 200; i++) { //Find where the stack ends
 						if (this._debugger.memory.get(0xFE00 + i) == undefined){
 							whereStackEnds += i;
