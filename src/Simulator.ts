@@ -483,7 +483,6 @@ export class LC3Simulator extends EventEmitter{
 		if (manip.startsWith(".") || manip.startsWith(";") || manip.length <= 0) return {success: true};
 
 		if (!this.startsWithCommand(manip)){
-			console.log(manip)
 			if (manip.split(" ").length > 1){
 				manip = manip.substring(manip.indexOf(" ")+1) //Removes the label (NOTE: for positional labels)	
 			}else{
@@ -1316,6 +1315,7 @@ export class LC3Simulator extends EventEmitter{
 		entry.machine = this.mcc;
 
 		this.memory.set(0xFFFF, entry)
+		//No need to assign MCR, because it'll always be zero
 	}
 
 	protected UpdatePSR(){
