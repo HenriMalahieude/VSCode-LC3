@@ -22,7 +22,7 @@ export class SimulationTester extends LC3Simulator {
 		console.log("\tPreprocessor Test");
 		check("Preprocess", this.testPreprocess());
 
-		console.log("\tMachine Code Translator Test")
+		console.log("\tMachine Code Test")
 		check("Machine Code", this.testMachineCode());
 		
 		console.log("\tOp-Code Test");

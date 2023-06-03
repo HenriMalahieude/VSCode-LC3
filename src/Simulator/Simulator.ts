@@ -5,6 +5,8 @@ import { Result, LC3Data, TextFile, Bit16Location,
 	ConvertLC3ToMachine, ConvertToUnsigned, ConvertLC3ToNumber, 
 	WithinBitLimit, EmptyLC3Data, instanceOfVSCTextDocument } from './LC3Utils'
 
+import { SetSystemMemory } from './SystemMemoryLC3';
+
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 //You may notice that I am not consistent with my public/private/protected... this just makes my life easier
@@ -14,7 +16,7 @@ export class LC3Simulator extends EventEmitter{
 
 	registers: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
 	protected condition_codes = {"N": false, "Z": true, "P": false};
-	memory: Map<number, LC3Data>; //TODO: Fill with System Memory
+	memory: Map<number, LC3Data>;
 	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the last command instead of the next
 	psr: number = 0x8002; //[15] = Privelege, [2:0] = NZP
 	mcr: number = 0; //Located at 0xFFFE
@@ -43,7 +45,7 @@ export class LC3Simulator extends EventEmitter{
 	protected stdin: number[] = [];
 	protected stdinExpect: boolean = false; //Is true if stdin is expected and stdin is currently empty
 
-	constructor(f: vscode.TextDocument | undefined){
+	constructor(f: TextFile | undefined){
 		super();
 		//Initialize the machine
 		this.memory = new Map<number, LC3Data>(); //Potentially get a file to pre-load system memory into here
@@ -52,6 +54,10 @@ export class LC3Simulator extends EventEmitter{
 		if (f) this.file = f;
 		this.subroutineLocations = new Map<number, number>();
 		this.labelLocations = new Map<string, Bit16Location>();
+
+		if (f){
+			//SetSystemMemory(this.memory);
+		}
 
 		this.EventConnect();
 	}
@@ -572,7 +578,7 @@ export class LC3Simulator extends EventEmitter{
 			return this.LEA(manip);
 		}else if (manip.startsWith("NOT ")){
 			return this.NOT(manip);
-		}else if (manip.search(/RTI\b/gm) != -1){
+		}else if (manip.search(/\bRTI\b/gm) != -1){
 			return {success: false, message: "Simulator does not simulate System Memory."};
 		}else if (manip.startsWith("ST ")){
 			return this.ST(manip);
