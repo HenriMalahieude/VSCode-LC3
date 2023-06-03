@@ -1050,8 +1050,8 @@ export class LC3Simulator extends EventEmitter{
 		let data = this.memory.get(address);
 		if (data == undefined){
 			data = emptyLC3Data();
-			this.memory.set(address, {assembly: "", machine: 0, location: {pc: address, fileIndex: -1}});
-			this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
+			this.memory.set(address, {assembly: "", machine: this.registers[registerIndex1], location: {pc: address, fileIndex: -1}});
+			//this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
 		}
 
 		data.machine = this.registers[registerIndex1];

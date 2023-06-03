@@ -241,22 +241,22 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 					response.body.variables = vArr;
 				}else{
 					const STACK_END = 0xFE00 - 1;
-					let whereStackEnds = STACK_END;
-					for (let i = 0; i < 200; i++) { //Find where the stack ends
-						if (this._debugger.memory.get(STACK_END + i) == undefined){
-							whereStackEnds += i;
+					let whereStackStarts = STACK_END;
+					for (let i = 0; i < 200; i++) { //Find where the stack "starts"
+						if (this._debugger.memory.get(STACK_END - i) == undefined){
+							whereStackStarts -= i;
 							break;
 						}
 					}
 
-					let whereStackBegins = (whereStackEnds - this.maxStackView) >= STACK_END ? (whereStackEnds - this.maxStackView) : STACK_END;
+					let whereStackEnds = (whereStackStarts + this.maxStackView) <= STACK_END ? (whereStackStarts + this.maxStackView) : STACK_END;
 
 					response.body = {variables: []}
-					for (let i = whereStackBegins; i <= whereStackEnds; i++){
+					for (let i = whereStackStarts; i <= whereStackEnds; i++){
 						let data = this._debugger.memory.get(i);
 						if (data == undefined) data = emptyLC3Data();
 						
-						response.body.variables.push({type: "string", name: (this.formatAddress(i) + " (" + String(i - whereStackBegins) + ")"), value: this.formatNumber(data.machine), variablesReference: 0});
+						response.body.variables.push({type: "string", name: (this.formatAddress(i) + " (" + String(i - whereStackStarts) + ")"), value: this.formatNumber(data.machine), variablesReference: 0});
 					}
 				}
 			}
