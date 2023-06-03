@@ -50,7 +50,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		response.body.supportsSetVariable = true;
 		this.sendResponse(response);
 
-		//this.sendEvent(new DAP.InitializedEvent());
+		this.sendEvent(new DAP.InitializedEvent());
 	}
 
 	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request): void {
@@ -89,7 +89,6 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 					value: '',
 					ignoreFocusOut: true,
 				}).then((item: string | undefined) => {
-					console.log(item)
 					if (item != undefined){
 						if (this._debugger){
 							for (let i = 0; i < item.length; i++){
@@ -127,26 +126,27 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	protected async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): Promise<void> {
+		if (this._debugger == undefined) return;
 
-		/*const path = args.source.path as string;
-		const clientLines = args.lines || [];
+		if (args.breakpoints != undefined){
+			const locations = args.breakpoints;
 
-		// clear all breakpoints for this file
-		this._runtime.clearBreakpoints(path);
+			this._debugger.clearBreakpoints();
 
-		// set and verify breakpoint locations
-		const actualBreakpoints0 = clientLines.map(async l => {
-			const { verified, line, id } = await this._runtime.setBreakPoint(path, this.convertClientLineToDebugger(l));
-			const bp = new DAP.Breakpoint(verified, this.convertDebuggerLineToClient(line)) as DebugProtocol.Breakpoint;
-			bp.id = id;
-			return bp;
-		});
-		const actualBreakpoints = await Promise.all<DebugProtocol.Breakpoint>(actualBreakpoints0);
+			//Apparently we have to add it for the forward response
+			response.body = {
+				breakpoints: []
+			}
 
-		// send back the actual breakpoint positions
-		response.body = {
-			breakpoints: actualBreakpoints
-		};*/
+			for (let bpi = 0; bpi < locations.length; bpi++) {
+				let bp = locations[bpi];
+				if (bp){
+					this._debugger.addBreakpoint(bp.line);
+					response.body.breakpoints.push({verified: (args.sourceModified == undefined) ? true : !args.sourceModified, line: bp.line, id: bp.line});
+				}
+			}
+		}
+
 		this.sendResponse(response);
 	}
 
@@ -183,10 +183,6 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	protected terminateRequest(response: DebugProtocol.TerminateResponse, args: DebugProtocol.TerminateArguments, request?: DebugProtocol.Request | undefined): void {
-		this.sendResponse(response);
-	}
-
-	protected breakpointLocationsRequest(response: DebugProtocol.BreakpointLocationsResponse, args: DebugProtocol.BreakpointLocationsArguments, request?: DebugProtocol.Request): void {
 		this.sendResponse(response);
 	}
 

@@ -18,8 +18,6 @@ export function activateDebugging(ctx: vscode.ExtensionContext, otc: vscode.Outp
 		let v = vscode.window.activeTextEditor;
 		let ret: string | undefined = (v) ? vscode.workspace.asRelativePath(v.document.uri, false) : undefined;
 
-		console.log(v, ret)
-
 		if (v == undefined){
 			console.log("Bruh")
 			return vscode.window.showInputBox({
