@@ -78,7 +78,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		if (this.labelLocations.get("LABEL") == undefined || this.labelLocations.get("LABEL")?.pc != 0x4000) return {success: false, message: "Positional Label not saved Properly."}
 
 		//Mega Pseudo Tester
-		let test6 = smallTestor(this, ".ORIG x3000", "LD R0, TEST", "HALT", "TEST .FILL #0", "TEST1 .STRINGZ \"Hello, World!\"", "TEST2 .BLKW 10", ".END")
+		let test6 = smallTestor(this, ".ORIG x3000", "LD R0, TEST", "HALT", "TEST .FILL #0", "TEST1 .STRINGZ \"Hello, World!\"", "TEST2 .BLKW #10", ".END")
 		if (!test6.success) return test6;
 		
 		let labelTest1 = this.labelLocations.get("TEST")

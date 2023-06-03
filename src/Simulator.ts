@@ -232,7 +232,6 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	public async stepOut(forward: boolean): Promise<Result>{
-		console.log("Asked to Step Out!")
 		if (!this.status.success || this.halted) {return this.status;}
 
 		//Detect if this command is part of a subroutine
@@ -243,7 +242,6 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	public async run(): Promise<Result>{ //TODO Breakpoints in here
-		console.log("Asked to Run!")
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
 		this.currentBreakpoint = undefined;
@@ -299,7 +297,6 @@ export class LC3Simulator extends EventEmitter{
 			let unformattedTxt = getLine(i-1, this.file, testingFile);
 			let txt = unformattedTxt.trim().toLocaleUpperCase();
 			let command = txt.split(" ");
-
 			//Ignore Empty Space and Comments
 			if (txt.search("^\s*$") > -1 || txt.substring(0, 1) == ";") continue; 
 
@@ -333,7 +330,7 @@ export class LC3Simulator extends EventEmitter{
 			}
 			
 			//End of area where code is allowed
-			if (txt.match(/.END\s*/gm)){
+			if (txt.match(/\.END\s*/gm) && txt.indexOf(".END") == 0){
 				if (codeAllowed){
 					codeAllowed = false;
 				}else{
@@ -373,8 +370,6 @@ export class LC3Simulator extends EventEmitter{
 						location: {pc: currentLocation, fileIndex: i-1},
 					}
 
-					//console.log(ss, ll, currentLocation);
-
 					this.memory.set(currentLocation, ll);
 					this.labelLocations.set(command[0], {pc: currentLocation, fileIndex: i-1})
 
@@ -405,8 +400,8 @@ export class LC3Simulator extends EventEmitter{
 					this.memory.set(currentLocation, ll);
 					this.labelLocations.set(command[0], {pc: currentLocation, fileIndex: i-1});
 
-					let total = Number(command[2]);
-					if (Number.isNaN(total)) return {success: false, line: i, message: "Could not convert number (NaN err). Do not use any specifiers (x,b,#) as this is implicitly converted from decimal."};
+					let total = this.convertNumber(command[2]);
+					if (Number.isNaN(total)) return {success: false, line: i, message: "Could not convert number (NaN err). Missing (b, x, #) number specifier."};
 
 					for (let j = 1; j < Number(command[2]); j++){
 						currentLocation += 1;
@@ -419,7 +414,10 @@ export class LC3Simulator extends EventEmitter{
 					}
 				}
 
+				if (!codeAllowed) return {success: false, message: "No longer allowing code, yet have code?", line: i};
+
 				currentLocation += 1;
+				
 				continue;
 			}
 
@@ -479,7 +477,7 @@ export class LC3Simulator extends EventEmitter{
 				continue;
 			}
 
-			if (txt.match(/.END\s*/gm)){
+			if (txt.match(/\.END\s*/gm) && txt.startsWith(".END")){
 				codeAllowed = false;
 
 				continue;
@@ -508,10 +506,6 @@ export class LC3Simulator extends EventEmitter{
 
 			if (codeAllowed) currentLocation++;
 		}
-
-		//console.log(this.memory);
-		//console.log(this.labelLocations);
-		//console.log(this.subroutineLocations);
 
 		return {success: true};
 	}
@@ -555,17 +549,17 @@ export class LC3Simulator extends EventEmitter{
 		} //TODO: Ensure that machine is still the same for these commands
 
 		//Macros
-		if (manip.match(/\s*GETC\s*/gm)){
+		if (manip.match(/\s*GETC\s*/gm) && manip.startsWith("GETC")){
 			return await this.TRAP("TRAP X20");
-		}else if (manip.match(/\s*OUT\s*/gm)){
+		}else if (manip.match(/\s*OUT\s*/gm) && manip.startsWith("OUT")){
 			return await this.TRAP("TRAP X21");
-		}else if (manip.match(/\s*PUTS\s*/gm)){
+		}else if (manip.match(/\s*PUTS\s*/gm) && manip.startsWith("PUTS")){
 			return await this.TRAP("TRAP X22");
-		}else if (manip.match(/\s*IN\s*/gm)){
+		}else if (manip.match(/\s*IN\s*/gm) && manip.startsWith("IN")){
 			return await this.TRAP("TRAP X23");
-		}else if (manip.match(/\s*HALT\s*/gm)){
+		}else if (manip.match(/\s*HALT\s*/gm) && manip.startsWith("HALT")){
 			return await this.TRAP("TRAP X25");
-		}else if (manip.match(/\s*RET\s*/gm)){
+		}else if (manip.match(/\s*RET\s*/gm) && manip.startsWith("RET")){
 			return this.JMP("JMP R7");
 		}
 
@@ -614,10 +608,15 @@ export class LC3Simulator extends EventEmitter{
 		let command  = line.split(" ");
 		let destinationS = command[1].substring(1, 2);
 		let sourceS = command[2].substring(1, 2);
-		let numerical
+		let numerical;
 
 		if (!command[3].startsWith("R")){
 			numerical = this.convertNumber(command[3]);
+
+			if (Number.isNaN(numerical)){
+				return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag"}
+			}
+
 			if (!this.bitLimit(numerical, 5)){
 				return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
 			}
@@ -633,19 +632,12 @@ export class LC3Simulator extends EventEmitter{
 		let destIndex = Number(destinationS);
 		let sourIndex = Number(sourceS);
 
-		//console.log(command);
-		//console.log(destinationS, sourceS, numerical, destIndex, sourIndex);
-
 		if (!command[1].startsWith("R") || Number.isNaN(destIndex) || destIndex < 0 || destIndex > 7){
 			return {success: false, message: "Destination Register is NaN or out of bounds."}
 		}
 
 		if (!command[2].startsWith("R") || Number.isNaN(sourIndex) || sourIndex < 0 || sourIndex > 7){
 			return {success: false, message: "First Source Register is NaN or out of bounds."}
-		}
-
-		if (Number.isNaN(numerical)){
-			return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag"}
 		}
 
 		if (command[3].startsWith("R")){
@@ -673,6 +665,13 @@ export class LC3Simulator extends EventEmitter{
 
 		if (!command[3].startsWith("R")){
 			numerical = this.convertNumber(command[3]);
+			if (Number.isNaN(numerical)){
+				return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag."}
+			}
+
+			if (!this.bitLimit(numerical, 5)){
+				return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
+			}
 		}else{
 			numerical = Number(command[3].substring(1,2));
 			if (Number.isNaN(numerical) || numerical < 0 || numerical > 7){
@@ -692,16 +691,7 @@ export class LC3Simulator extends EventEmitter{
 		if (!command[2].startsWith("R") || Number.isNaN(sourIndex) || sourIndex < 0 || sourIndex > 7){
 			return {success: false, message: "First Source Register is NaN or out of bounds."}
 		}
-
-		if (Number.isNaN(numerical)){
-			return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag."}
-		}
-
-		if (!this.bitLimit(numerical, 5)){
-			return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
-		}
 		
-		//console.log(this.convertToUnsigned(this.registers[sourIndex]).toString(2), " - ", this.convertToUnsigned(numerical).toString(2))
 		this.registers[destIndex] = this.convertToUnsigned(this.registers[sourIndex]) & this.convertToUnsigned(numerical); //Bitwise And
 
 		this.updateConditionCodes(destIndex);
@@ -1140,7 +1130,7 @@ export class LC3Simulator extends EventEmitter{
 		if (line.startsWith("ADD ")) return true;
 		if (line.startsWith("AND ")) return true;
 
-		if (line.match(/BR[|NZP]/g)) return true;
+		if (line.match(/BR[|NZP]/g) && line.startsWith("BR")) return true;
 		if (line.startsWith("JMP ")) return true;
 		if (line.startsWith("JSR ")) return true;
 		if (line.startsWith("JSRR ")) return true;
@@ -1159,12 +1149,12 @@ export class LC3Simulator extends EventEmitter{
 		
 		if (line.startsWith("TRAP ")) return true;
 
-		if (line.match(/\s*HALT\s*/gm)) return true;
-		if (line.match(/\s*PUTS\s*/gm)) return true;
-		if (line.match(/\s*GETC\s*/gm)) return true;
-		if (line.match(/\s*RET\s*/gm)) return true;
-		if (line.match(/\s*OUT\s*/gm)) return true;
-		if (line.match(/\s*IN\s*/gm) && !line.match(/\s*.STRINGZ\s*/gm)) return true;
+		if (line.match(/\s*HALT\s*/gm) && line.startsWith("HALT")) return true;
+		if (line.match(/\s*PUTS\s*/gm) && line.startsWith("PUTS")) return true;
+		if (line.match(/\s*GETC\s*/gm) && line.startsWith("GETC")) return true;
+		if (line.match(/\s*RET\s*/gm) && line.startsWith("RET")) return true;
+		if (line.match(/\s*OUT\s*/gm) && line.startsWith("OUT")) return true;
+		if (line.match(/\s*IN\s*/gm) && line.startsWith("IN")) return true;
 
 		return false;
 	}
@@ -1294,8 +1284,6 @@ export class LC3Simulator extends EventEmitter{
 				if (opcode == "IN") numerical = 0x23;
 			}
 
-			//console.log(numerical);
-
 			if (numerical < 0){
 				numerical = 0x111111111111 - numerical + 1;
 			}
@@ -1328,7 +1316,6 @@ export class LC3Simulator extends EventEmitter{
 	protected bitLimit(n: number, limit:number): boolean{
 		let posLim:number = (Math.pow(2, limit-1)) - 1;
 		let negLim = -1 * (Math.pow(2, limit-1));
-		//console.log(posLim, negLim, n);
 		if (n > posLim || n < negLim) return false;
 
 		return true;
@@ -1339,7 +1326,6 @@ export class LC3Simulator extends EventEmitter{
 		if (n >= 0){
 			return n;
 		}else{
-			//console.log((0xFFFF).toString(2), "-", n.toString(2), "+", 1, "=", (0xFFFF - n + 1).toString(2));
 			return 0xFFFF + n + 1;
 		}
 	}
