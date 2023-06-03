@@ -3,7 +3,8 @@
 import * as vscode from 'vscode';
 import * as DAP from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol/lib/debugProtocol";
-import { LC3Simulator, Result, emptyLC3Data } from "./Simulator";
+import { LC3Simulator } from "./Simulator";
+import { Result, EmptyLC3Data } from "./LC3Utils";
 import * as path from "path";
 
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
@@ -23,6 +24,7 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 	private static threadID = 1;
 
 	private _debugger: LC3Simulator | undefined;
+	private programToDebug: vscode.TextDocument | undefined;
 	private outputChannel: vscode.OutputChannel;
 
 	private maxMemoryView: number = 16;
@@ -68,6 +70,8 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 			let td: vscode.TextDocument = await vscode.workspace.openTextDocument(pathToUri(args.program));
 
 			vscode.window.showTextDocument(td); //Focus this Text Document
+
+			this.programToDebug = td;
 
 			this.outputChannel.clear();
 			this._debugger = new LC3Simulator(td);
@@ -153,15 +157,15 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 		let txt: string = "";
 		let sourceFile: DAP.Source = new DAP.Source("File");
 
-		if (this._debugger && this._debugger.file){
+		if (this._debugger && this.programToDebug){
 
 			//Next Instruction Info
 			if (args.threadId == 1){
 				lin = this._debugger.getCurrentLine();
 				txt = this._debugger.getCurrentInstruction(1);
 
-				sourceFile.name = path.basename(this._debugger.file.uri.fsPath);
-				sourceFile.path = this._debugger.file.uri.fsPath;
+				sourceFile.name = path.basename(this.programToDebug.uri.fsPath);
+				sourceFile.path = this.programToDebug.uri.fsPath;
 
 				txt = txt.trim();
 			
@@ -225,7 +229,7 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 						
 						let stringMachine: string;
 						if (contents == undefined) {
-							contents = emptyLC3Data();
+							contents = EmptyLC3Data();
 							stringMachine = contents.assembly + " (0x?)";
 						}else{
 							stringMachine = contents.assembly + " (" + this.formatNumber(contents.machine) + ")";
@@ -254,7 +258,7 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 					response.body = {variables: []}
 					for (let i = whereStackStarts; i <= whereStackEnds; i++){
 						let data = this._debugger.memory.get(i);
-						if (data == undefined) data = emptyLC3Data();
+						if (data == undefined) data = EmptyLC3Data();
 						
 						response.body.variables.push({type: "string", name: (this.formatAddress(i) + " (" + String(i - whereStackStarts) + ")"), value: this.formatNumber(data.machine), variablesReference: 0});
 					}

@@ -1,31 +1,9 @@
-import { EventEmitter } from 'stream';
 import * as vscode from 'vscode'
+import { EventEmitter } from 'stream';
 
-export interface Result{
-	success: boolean;
-	line?: number;
-	context?: string;
-	message?: string;
-}
-
-export interface Bit16Location{
-	fileIndex: number;
-	pc: number;
-}
-
-export interface LC3Data{
-	assembly: string | undefined;
-	machine: number;
-	location: Bit16Location;
-}
-
-export function emptyLC3Data(): LC3Data{
-	return {
-		assembly: "-",
-		machine: 0,
-		location: {fileIndex: 0, pc: 0x3000},
-	}
-}
+import { Result, LC3Data, TextFile, Bit16Location, 
+	ConvertLC3ToMachine, ConvertToUnsigned, ConvertLC3ToNumber, 
+	WithinBitLimit, EmptyLC3Data, instanceOfVSCTextDocument } from './LC3Utils'
 
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -42,7 +20,7 @@ export class LC3Simulator extends EventEmitter{
 	mcr: number = 0; //Located at 0xFFFE
 	mcc: number = 0; //Located at 0xFFFF
 
-	file: vscode.TextDocument | undefined;
+	file: TextFile | undefined;
 	currentLine: number = -1;
 	protected processed: boolean = false;
 
@@ -115,10 +93,10 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	public getCurrentInstruction(offset:number = 0): string{
-		if (!this.file || (this.currentLine + offset >= this.file.lineCount)) return "";
-		let lineString = this.file.lineAt(this.currentLine + offset);
+		if (!this.file || (this.currentLine + offset >= this.GetTotalLines())) return "";
+		let lineString = this.GetLineOfText(this.currentLine + offset);
 
-		return lineString.text;
+		return lineString;
 	}
 
 	public addBreakpoint(line: number){
@@ -134,14 +112,14 @@ export class LC3Simulator extends EventEmitter{
 	public async stepOver(forward: boolean, pc: number | undefined): Promise<Result>{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
-		if (this.file.lineCount < this.currentLine) {
-			this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.file.lineCount}
+		if (this.GetTotalLines() < this.currentLine) {
+			this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.GetTotalLines()}
 			this.halted = true;
 			return this.status;
 		}
 		
 		//Two Step Over Modes: Step to Next Command, Step over Whitespace
-		let currentText = this.file.lineAt(Math.max(this.currentLine+1, 0)).text;
+		let currentText = this.GetLineOfText(Math.max(this.currentLine+1, 0));
 		let overWhiteSpace = currentText.startsWith(".") || currentText.startsWith(";") || currentText.length <= 0;
 		if ((pc == undefined && !overWhiteSpace) || pc != undefined){ //We need to skip to the next command
 			let nextPc = (pc != undefined) ? pc : (this.pc + 1); //Note where we need to stop
@@ -160,7 +138,7 @@ export class LC3Simulator extends EventEmitter{
 					this.currentBreakpoint = undefined;
 				}
 
-				let state = await this.interpretCommand(this.file.lineAt(this.currentLine).text);
+				let state = await this.interpretCommand(this.GetLineOfText(this.currentLine));
 				if (!state.success){
 					state.line = this.currentLine+1;
 					state.context = "Runtime"
@@ -171,7 +149,7 @@ export class LC3Simulator extends EventEmitter{
 
 				//We've located the command we need to stop on, therefore find next command
 				if (this.pc == nextPc){
-					for (let i = this.currentLine+1; i < this.file.lineCount; i++){
+					for (let i = this.currentLine+1; i < this.GetTotalLines(); i++){
 						this.currentLine = i;
 
 						//If the whitespace were gonna skip is a breakpoint or not
@@ -180,7 +158,7 @@ export class LC3Simulator extends EventEmitter{
 							return state;
 						}
 
-						currentText = this.file.lineAt(Math.max(this.currentLine, 0)).text;
+						currentText = this.GetLineOfText(Math.max(this.currentLine, 0));
 						if (!currentText.startsWith(".") && !currentText.startsWith(";") && currentText.length > 0){
 							this.currentLine--;
 							return state;
@@ -194,9 +172,9 @@ export class LC3Simulator extends EventEmitter{
 			}
 		}else{ 
 			//Just skip over the white space until the next command, it's fine to skip breakpoints here
-			for (let i = this.currentLine+1; i < this.file.lineCount; i++){
+			for (let i = this.currentLine+1; i < this.GetTotalLines(); i++){
 				this.currentLine = i;
-				currentText = this.file.lineAt(Math.max(this.currentLine, 0)).text; //can't reuse the old because of new currentLine
+				currentText = this.GetLineOfText(Math.max(this.currentLine, 0)); //can't reuse the old because of new currentLine
 				if (!currentText.startsWith(".") && !currentText.startsWith(";") && currentText.length > 0) {
 					this.currentLine--;
 					return {success: true}
@@ -210,15 +188,15 @@ export class LC3Simulator extends EventEmitter{
 	public async stepIn(forward: boolean): Promise<Result>{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
-		if (this.file.lineCount < this.currentLine) {
-			this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.file.lineCount}
+		if (this.GetTotalLines() < this.currentLine) {
+			this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.GetTotalLines()}
 			this.halted = true;
 			return this.status;
 		}
 
 		this.currentLine += 1;
 
-		let succ = await this.interpretCommand(this.file.lineAt(this.currentLine).text);
+		let succ = await this.interpretCommand(this.GetLineOfText(this.currentLine));
 		if (!succ.success){
 			succ.line = this.currentLine+1; //translating from 0-index to 1-index
 			succ.context = "Runtime"
@@ -252,10 +230,11 @@ export class LC3Simulator extends EventEmitter{
 			//Check that we aren't "starting up" from a breakpoint
 			//However if we aren't then stop ofc
 			if (this.onBreakpoint() && i > 0){
+				this.currentLine--;
 				return {success: true};
 			}
 
-			let state = await this.interpretCommand(this.file.lineAt(this.currentLine).text);
+			let state = await this.interpretCommand(this.GetLineOfText(this.currentLine));
 			if (!state.success){
 				state.line = this.currentLine+1;
 				state.context = "Runtime";
@@ -268,8 +247,8 @@ export class LC3Simulator extends EventEmitter{
 				return {success: true};
 			}
 
-			if (this.file.lineCount < this.currentLine) {
-				this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.file.lineCount};
+			if (this.GetTotalLines() < this.currentLine) {
+				this.status = {success: false, context: "EOF", message: "Reached end of file before halt?", line: this.GetTotalLines()};
 				this.halted = true;
 				return this.status;
 			}
@@ -286,26 +265,21 @@ export class LC3Simulator extends EventEmitter{
 	//-----------------------Meta-Functions-----------------------
 
 	protected preprocess(testingFile: string[] | undefined): Result{
-		if (!this.file && !testingFile) return {success: false, message: "Opened in testing mode without testing file."};
+		if (this.file == undefined && testingFile == undefined) return {success: false, message: "Opened in testing mode without testing file."};
+		
+		if (testingFile){
+			this.file = testingFile;
+		}
 
 		let currentLocation: number = -1; //Sentinel Number
 		let codeAllowed: boolean = false; //To restrict code to between .ORIG and .END
 		let subroutineMark: boolean = false; //To be able to use the subroutineLocations property properly
 
-		let max:number = this.file ? this.file.lineCount : (testingFile ? testingFile.length: -1);
-
-		function getLine(dex:number, file: vscode.TextDocument | undefined, testFile: string[] | undefined): string{
-			if (file){
-				return file.lineAt(dex).text;
-			}else if (testFile){
-				return testFile[dex]; 
-			}
-			return "";
-		}
+		let max:number = this.GetTotalLines();
 
 		//First pass for labels/symbols
 		for (let i = 1; i-1 < max; i++){
-			let unformattedTxt = getLine(i-1, this.file, testingFile);
+			let unformattedTxt = this.GetLineOfText(i-1);
 			let txt = unformattedTxt.trim().toLocaleUpperCase();
 			let command = txt.split(" ");
 			//Ignore Empty Space and Comments
@@ -315,7 +289,7 @@ export class LC3Simulator extends EventEmitter{
 			if (txt.startsWith(".ORIG ") && command.length == 2){
 				if (command.length == 2){
 					if (!codeAllowed){
-						currentLocation = this.convertNumber(command[1]);
+						currentLocation = ConvertLC3ToNumber(command[1]);
 						if (currentLocation < this.pc){
 							this.pc = currentLocation - 1;
 							this.currentLine = i-1;
@@ -362,7 +336,7 @@ export class LC3Simulator extends EventEmitter{
 				if (this.startsWithCommand(txt)) return {success: false, message: "Cannot start .FILL, .STRINGZ, or .BLKW with opcode", line: i};
 
 				if (txt.match(/\s.FILL\s+/gm)){ //Single Variables
-					let numerical = this.convertNumber(command[2]);
+					let numerical = ConvertLC3ToNumber(command[2]);
 					if (Number.isNaN(numerical)) return {success: false, line: i, message: "Number provided is not hex (x), bin (b), or decimal (#)"};
 
 					let ll: LC3Data = { 
@@ -411,7 +385,7 @@ export class LC3Simulator extends EventEmitter{
 					this.memory.set(currentLocation, ll);
 					this.labelLocations.set(command[0], {pc: currentLocation, fileIndex: i-1});
 
-					let total = this.convertNumber(command[2]);
+					let total = ConvertLC3ToNumber(command[2]);
 					if (Number.isNaN(total)) return {success: false, line: i, message: "Could not convert number (NaN err). Missing (b, x, #) number specifier."};
 
 					for (let j = 1; j < total; j++){
@@ -439,7 +413,7 @@ export class LC3Simulator extends EventEmitter{
 						/*this.memory.set(currentLocation, 
 							{
 								assembly: txt,
-								machine: this.convertCommandToMachine(txt, currentLocation),
+								machine: ConvertLC3ToMachine(txt, currentLocation),
 								location: {pc: currentLocation, fileIndex:i-1},
 							});//*/ //NOTE: I've decided to move where we mark commands
 					}else if (command.length > 1 && command[1].substring(0, 1) != ";"){
@@ -473,7 +447,7 @@ export class LC3Simulator extends EventEmitter{
 
 		//Second Pass for opcodes/syntax
 		for (let i = 1; i-1 < max; i++){
-			let unformattedTxt = getLine(i-1, this.file, testingFile);
+			let unformattedTxt = this.GetLineOfText(i-1);
 			let txt = unformattedTxt.trim().toLocaleUpperCase();
 			let command = txt.split(" ");
 
@@ -481,7 +455,7 @@ export class LC3Simulator extends EventEmitter{
 			if (txt.search("^\s*$") > -1 || txt.substring(0, 1) == ";") continue;
 
 			if (txt.startsWith(".ORIG ")){
-				currentLocation = this.convertNumber(command[1]);
+				currentLocation = ConvertLC3ToNumber(command[1]);
 				subroutineMark = true;
 				codeAllowed = true;
 
@@ -508,7 +482,7 @@ export class LC3Simulator extends EventEmitter{
 			let entry: LC3Data = {
 				assembly: txt,
 				location: {pc: currentLocation, fileIndex: i-1},
-				machine: this.convertCommandToMachine(currentLocation, command[0], command.at(1), command.at(2), command.at(3))
+				machine: ConvertLC3ToMachine(currentLocation, this.labelLocations, command[0], command.at(1), command.at(2), command.at(3))
 			}
 			
 			if (Number.isNaN(entry.machine)) return {success: false, message: "Could not convert assembly into machine code (binary)?", line: i};
@@ -622,13 +596,13 @@ export class LC3Simulator extends EventEmitter{
 		let numerical;
 
 		if (!command[3].startsWith("R")){
-			numerical = this.convertNumber(command[3]);
+			numerical = ConvertLC3ToNumber(command[3]);
 
 			if (Number.isNaN(numerical)){
 				return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag"}
 			}
 
-			if (!this.bitLimit(numerical, 5)){
+			if (!WithinBitLimit(numerical, 5)){
 				return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
 			}
 		}else{
@@ -675,12 +649,12 @@ export class LC3Simulator extends EventEmitter{
 		let numerical
 
 		if (!command[3].startsWith("R")){
-			numerical = this.convertNumber(command[3]);
+			numerical = ConvertLC3ToNumber(command[3]);
 			if (Number.isNaN(numerical)){
 				return {success: false, message: "Number not given proper hexadecimal (x) or decimal (#) or binary (b) flag."}
 			}
 
-			if (!this.bitLimit(numerical, 5)){
+			if (!WithinBitLimit(numerical, 5)){
 				return {success: false, message: "IMM does not fit within 5-bit bounds. [-16, 15]"};
 			}
 		}else{
@@ -703,7 +677,7 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "First Source Register is NaN or out of bounds."}
 		}
 		
-		this.registers[destIndex] = this.convertToUnsigned(this.registers[sourIndex]) & this.convertToUnsigned(numerical); //Bitwise And
+		this.registers[destIndex] = ConvertToUnsigned(this.registers[sourIndex]) & ConvertToUnsigned(numerical); //Bitwise And
 
 		this.updateConditionCodes(destIndex);
 
@@ -769,7 +743,7 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Attempting to jump to unregistered location in memory. Forcing simulation end."};
 		}
 
-		if (!this.bitLimit(loc.pc - this.pc, 11)) return {success: false, message: "Label does not fit within 11 bit limit.\n[-1024, 1023]"};
+		if (!WithinBitLimit(loc.pc - this.pc, 11)) return {success: false, message: "Label does not fit within 11 bit limit.\n[-1024, 1023]"};
 
 		let savePc = this.pc+1;
 		this.registers[7] = savePc;
@@ -822,7 +796,7 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Attempted to locate non-existent label."}
 		}
 
-		if (!this.bitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LD [-256, 255])"};
+		if (!WithinBitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LD [-256, 255])"};
 
 		let numerical = this.memory.get(addr.pc);
 
@@ -848,7 +822,7 @@ export class LC3Simulator extends EventEmitter{
 		
 		if (loc != undefined){
 
-			if (!this.bitLimit(loc.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LDI [-256, 255])"};
+			if (!WithinBitLimit(loc.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LDI [-256, 255])"};
 
 			let data = this.memory.get(loc.pc)
 
@@ -893,15 +867,15 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Source Register is NaN or out of bounds."};
 		}
 
-		let numerical = this.convertNumber(command[3]);
-		if (!this.bitLimit(numerical, 6)) return {success: false, message: "Offset not within 6 bit limit\n[-32, 31]"};
+		let numerical = ConvertLC3ToNumber(command[3]);
+		if (!WithinBitLimit(numerical, 6)) return {success: false, message: "Offset not within 6 bit limit\n[-32, 31]"};
 		
 		let address = this.registers[registerIndex2] + numerical;
 		if (address < 0x3000 || address >= 0xFE00) return {success: false, message: "Attempted to load system reserved memory."};
 
 		let data = this.memory.get(address);
 		if (!data) {
-			data = emptyLC3Data();
+			data = EmptyLC3Data();
 			data.machine = 0;
 			this.memory.set(address, {assembly: "", machine: 0, location: {pc: address, fileIndex: -1}});
 			this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
@@ -931,7 +905,7 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Attempted to use an unregistered label location."};
 		}
 
-		if (!this.bitLimit(loc.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LEA [-256, 255])"};
+		if (!WithinBitLimit(loc.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LEA [-256, 255])"};
 
 		this.registers[registerIndex] = numerical;
 		this.updateConditionCodes(registerIndex);
@@ -975,11 +949,11 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Attempted to locate non-existent label."}
 		}
 
-		if (!this.bitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from ST [-256, 255])"};
+		if (!WithinBitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from ST [-256, 255])"};
 
 		let data: LC3Data | undefined = this.memory.get(addr.pc);
 		if (data == undefined){
-			data = emptyLC3Data();
+			data = EmptyLC3Data();
 			this.memory.set(addr.pc, {assembly: "", machine: 0, location: addr});
 			this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
 		}
@@ -1004,7 +978,7 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Attempted to locate non-existent label."}
 		}
 
-		if (!this.bitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LD [-256, 255])"};
+		if (!WithinBitLimit(addr.pc - this.pc, 9)) return {success: false, message: "Label is too far away.\n(Label must be in a 9 bit two's complement range from LD [-256, 255])"};
 
 		let data: LC3Data | undefined = this.memory.get(addr.pc);
 		if (data == undefined){
@@ -1015,7 +989,7 @@ export class LC3Simulator extends EventEmitter{
 		data = this.memory.get(savedAddr);
 
 		if (data == undefined){
-			data = emptyLC3Data();
+			data = EmptyLC3Data();
 			this.memory.set(savedAddr, {assembly: "", machine: 0, location: {pc: savedAddr, fileIndex: -1}});
 			this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
 		}
@@ -1041,15 +1015,15 @@ export class LC3Simulator extends EventEmitter{
 			return {success: false, message: "Destination Register is NaN or out of bounds."};
 		}
 
-		let numerical = this.convertNumber(command[3]);
-		if (!this.bitLimit(numerical, 6)) return {success: false, message: "Offset not within 6 bit limit\n[-32, 31]"};
+		let numerical = ConvertLC3ToNumber(command[3]);
+		if (!WithinBitLimit(numerical, 6)) return {success: false, message: "Offset not within 6 bit limit\n[-32, 31]"};
 		
 		let address = this.registers[registerIndex2] + numerical;
 		if (address < 0x3000 || address >= 0xFE00) return {success: false, message: "Attempted to set system reserved memory."};
 
 		let data = this.memory.get(address);
 		if (data == undefined){
-			data = emptyLC3Data();
+			data = EmptyLC3Data();
 			this.memory.set(address, {assembly: "", machine: this.registers[registerIndex1], location: {pc: address, fileIndex: -1}});
 			//this.warn({success: false, line: this.currentLine+1, context: "Runtime Warning", message: "Attempted to load undefined memory. Defining to zero."});
 		}
@@ -1063,7 +1037,7 @@ export class LC3Simulator extends EventEmitter{
 	protected async TRAP(line: string): Promise<Result>{
 		const waitCount: number = 250;
 		let command = line.split(" ");
-		let numerical = this.convertNumber(command[1].toLocaleUpperCase());
+		let numerical = ConvertLC3ToNumber(command[1].toLocaleUpperCase());
 
 		if (numerical == 0x20){ //GETC: Read one character
 			let v = this.stdin.at(0);
@@ -1122,21 +1096,6 @@ export class LC3Simulator extends EventEmitter{
 	//-----------------------HELPER FUNCTIONS-----------------------
 
 	//Requires All Upper Case input
-	protected convertNumber(param: string): number{
-		if (param.startsWith("X")){
-			param = "0x" + param.substring(1);
-			return Number(param);
-		}else if (param.startsWith("B")){
-			param = "0b" + param.substring(1);
-			return Number(param);
-		}else if (param.startsWith("#")){
-			return Number(param.substring(1));
-		}
-
-		return NaN;
-	}
-
-	//Requires All Upper Case input
 	protected startsWithCommand(line: string): boolean{
 		if (line.startsWith("ADD ")) return true;
 		if (line.startsWith("AND ")) return true;
@@ -1178,133 +1137,6 @@ export class LC3Simulator extends EventEmitter{
 		return line;
 	}
 
-	protected convertCommandToMachine(location: number, opcode: string, arg1: string | undefined, arg2: string | undefined, arg3: string | undefined): number{
-		if (opcode == "ADD" || opcode == "AND"){
-			let opc = (opcode == "AND") ? 0b0101 : 0b0001;
-			let DR = Number(arg1?.substring(1,2)) * Math.pow(2, 9)
-			let SR1 = Number(arg2?.substring(1,2)) * Math.pow(2, 6)
-			let rFlag = 1;
-			let numerical = (arg3 != undefined) ? this.convertNumber(arg3) : NaN;
-			if (Number.isNaN(numerical)){
-				numerical = Number(arg3?.substring(1,2))
-				rFlag = 0;
-			}
-
-			if (!this.bitLimit(numerical, 5)) numerical = NaN;
-
-			rFlag *= Math.pow(2, 5);
-			return (opc) * Math.pow(2, 12) + DR + SR1 + rFlag + numerical;
-		}else if (opcode.startsWith("BR")){
-			//let opc = 0b0000;
-			let flags = 0;
-			if (opcode.indexOf("N") > 1) flags += 0b100;
-			if (opcode.indexOf("Z") > 1) flags += 0b010;
-			if (opcode.indexOf("P") > 1) flags += 0b001;
-			flags *= Math.pow(2, 9);
-
-			let obj = (arg1) ? this.labelLocations.get(arg1) : {pc: 0};
-			let direction = (obj) ? obj.pc : 0;
-			let pcoffset9 = direction - (location + 1); //because technically pc is next line, but this version has it at last line
-
-			if (!this.bitLimit(pcoffset9, 9)) pcoffset9 = 0;
-
-			if (pcoffset9 < 0){ //NOTE: Not sure if negative numbers should be fixed or not
-				pcoffset9 = 0b111111111 + pcoffset9 + 1;
-			}
-
-			return flags + pcoffset9;
-		}else if (opcode == "JMP"){
-			let opc = 0b1100
-			let register = (arg1) ? Number(arg1.at(1)) : NaN;
-			return opc * Math.pow(2, 12) + register * Math.pow(2, 6);
-		}else if (opcode == "JSR"){
-			let opc = 0b01001; //Note extra 1 is actually Label/Register Flag
-
-			let obj = (arg1) ? this.labelLocations.get(arg1) : {pc: NaN};
-			let direction = (obj) ? obj.pc : NaN;
-			let pcoffset11 = direction - (location + 1);
-
-			if (!this.bitLimit(pcoffset11, 11)) pcoffset11 = 0;
-
-			if (pcoffset11 < 0){
-				pcoffset11 = 0b11111111111 + pcoffset11 + 1;
-			}
-
-			return opc * Math.pow(2, 11) + pcoffset11;
-		}else if (opcode == "JSRR"){
-			let opc = 0b0100;
-			let register = (arg1) ? Number(arg1.at(1)) : NaN;
-			return opc * Math.pow(2, 12) + register * Math.pow(2, 6);
-		}else if (opcode == "LD" || opcode == "LDI" || opcode == "LEA" || opcode == "ST" || opcode == "STI"){
-			let opc = (opcode == "LD") ? 0b0010 : 0b1010;
-			if (opcode == "LEA") opc = 0b1110;
-			if (opcode == "ST") opc = 0b0011;
-			if (opcode == "STI") opc = 0b1011;
-
-			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
-			
-			let pcoffset9;
-			let obj = (arg2) ? this.labelLocations.get(arg2) : undefined;
-			if (obj != undefined){
-				let direction = (obj) ? obj.pc : NaN;
-				pcoffset9 = direction - (location + 1);
-			}else{
-				pcoffset9 = (arg2) ? Number(arg2) : NaN; //NOTE: IDK why I have this here because I block direct encoding for execution
-			}
-
-			if (!this.bitLimit(pcoffset9, 9)) pcoffset9 = 0;
-
-			if (pcoffset9 < 0){
-				pcoffset9 = 0b111111111 + pcoffset9 + 1;
-			}
-
-			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + pcoffset9;
-		}else if (opcode == "LDR" || opcode == "STR"){
-			let opc = (opcode == "LDR") ? 0b0110 : 0b0111;
-
-			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
-			let br = (arg2) ? Number(arg2.at(1)) : NaN;
-			let offset = (arg3) ? this.convertNumber(arg3) : NaN;
-
-			if (!this.bitLimit(offset, 6)) offset = NaN;
-
-			if (offset < 0){
-				offset = 0b111111 + offset + 1;
-			}
-
-			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + br * Math.pow(2, 6) + offset;
-		}else if (opcode == "NOT"){
-			let opc = 0b1001;
-			let dr = (arg1) ? Number(arg1.at(1)) : NaN;
-			let sr = (arg2) ? Number(arg2.at(1)) : NaN;
-
-			return opc * Math.pow(2, 12) + dr * Math.pow(2, 9) + sr * Math.pow(2, 6) + 0b111111;
-		}else if (opcode == "RET"){
-			return 0b1100000111000000;
-		}else if (opcode == "TRAP" || opcode == "HALT" || opcode == "PUTS" || opcode == "GETC" || opcode == "OUT" || opcode == "IN"){
-			let opc = 0b1111;
-
-			let numerical = NaN;
-			if (arg1){
-				numerical = this.convertNumber(arg1);
-			}else{
-				if (opcode == "HALT") numerical = 0x25;
-				if (opcode == "PUTS") numerical = 0x22;
-				if (opcode == "GETC") numerical = 0x20;
-				if (opcode == "OUT") numerical = 0x21;
-				if (opcode == "IN") numerical = 0x23;
-			}
-
-			if (numerical < 0){
-				numerical = 0x111111111111 - numerical + 1;
-			}
-
-			return opc * Math.pow(2, 12) + numerical;
-		}
-
-		return NaN;
-	}
-
 	protected updateConditionCodes(registerIndex: number){
 		if (this.registers[registerIndex] > 0xFFFF || this.registers[registerIndex] < -0x7FFF){
 			this.registers[registerIndex] %= 0xFFFF; //Wrap it around
@@ -1323,31 +1155,13 @@ export class LC3Simulator extends EventEmitter{
 		}
 	}
 
-	//False if out of bounds of limit, for signed numbers only
-	protected bitLimit(n: number, limit:number): boolean{
-		let posLim:number = (Math.pow(2, limit-1)) - 1;
-		let negLim = -1 * (Math.pow(2, limit-1));
-		if (n > posLim || n < negLim) return false;
-
-		return true;
-	}
-
-	//Assuming that number is between -0x7FFF to 0x7FFE
-	protected convertToUnsigned(n: number): number{
-		if (n >= 0){
-			return n;
-		}else{
-			return 0xFFFF + n + 1;
-		}
-	}
-
 	protected warn(r: Result){
 		this.emit("warning", r);
 	}
 
 	protected IncrementMCC(){
 		this.mcc++;
-		let entry = emptyLC3Data();
+		let entry = EmptyLC3Data();
 		entry.machine = this.mcc;
 
 		this.memory.set(0xFFFF, entry)
@@ -1369,5 +1183,25 @@ export class LC3Simulator extends EventEmitter{
 		}
 
 		return false;
+	}
+
+	protected GetLineOfText(index: number): string{
+		if (this.file == undefined) return "";
+
+		if (instanceOfVSCTextDocument(this.file)){
+			return this.file.lineAt(index).text;
+		}
+
+		return this.file[index]; 
+	}
+
+	protected GetTotalLines(): number{
+		if (this.file == undefined) return 0;
+		
+		if (instanceOfVSCTextDocument(this.file)){
+			return this.file.lineCount;
+		}
+
+		return this.file.length;
 	}
 }

@@ -1,6 +1,7 @@
-import * as Sim from "../Simulator/Simulator"
+import { LC3Simulator, sleep } from "../Simulator/Simulator"
+import { Result, ConvertLC3ToMachine, Bit16Location } from "../Simulator/LC3Utils";
 
-export class SimulationTester extends Sim.LC3Simulator {
+export class SimulationTester extends LC3Simulator {
 	constructor(){
 		super(undefined);
 		this.resetSimulationState();
@@ -10,7 +11,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		console.log("Running Simulator Test Suite")
 		let testState = {"TOTAL": 0, "FAIL": 0};
 
-		function check(name: string, item: Sim.Result){
+		function check(name: string, item: Result){
 			testState["TOTAL"] += 1;
 			if (!item.success){
 				testState["FAIL"] += 1;
@@ -46,8 +47,8 @@ export class SimulationTester extends Sim.LC3Simulator {
 		console.log("Simulator Test Suite Success: (" + (testState["TOTAL"] - testState["FAIL"]) + "/" + testState["TOTAL"] + ")")
 	}
 
-	private testPreprocess(): Sim.Result{
-		function smallTestor(obj:SimulationTester, ...file: string[]): Sim.Result{
+	private testPreprocess(): Result{
+		function smallTestor(obj:SimulationTester, ...file: string[]): Result{
 			obj.resetSimulationState();
 			return obj.preprocess(file)
 		}
@@ -111,7 +112,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testADD(): Sim.Result{
+	private testADD(): Result{
 		//Test all registers
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
@@ -142,7 +143,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testAND(): Sim.Result{
+	private testAND(): Result{
 		//Test all registers
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
@@ -178,7 +179,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testBR(): Sim.Result{
+	private testBR(): Result{
 		this.resetSimulationState();
 		this.memory.set(0x3000, {assembly: "", machine: 0, location: {pc: 0x3000, fileIndex: 0}});
 		this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: 0});
@@ -215,7 +216,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testJMP(): Sim.Result{
+	private testJMP(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			let register = "R"+String(i);
@@ -229,7 +230,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testJSR(): Sim.Result{
+	private testJSR(): Result{
 		this.resetSimulationState();
 		this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: 14});
 		this.pc = 0x30FF
@@ -249,7 +250,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testJSRR(): Sim.Result{
+	private testJSRR(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			this.pc = 0x3FFF
@@ -265,7 +266,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testLD(): Sim.Result{
+	private testLD(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			this.memory.set(0x3000, {assembly: "", machine: 1234, location: {pc: 0x3000, fileIndex: -1}});
@@ -286,7 +287,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testLDI(): Sim.Result{
+	private testLDI(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
@@ -309,7 +310,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testLDR(): Sim.Result{
+	private testLDR(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
@@ -334,7 +335,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testLEA(): Sim.Result{
+	private testLEA(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			this.labelLocations.set("TEST", {pc: 0x3000, fileIndex: -1});
@@ -353,7 +354,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testNOT(): Sim.Result{
+	private testNOT(): Result{
 		//Test all registers
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
@@ -376,11 +377,11 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testRTI(): Sim.Result{
+	private testRTI(): Result{
 		return {success: true};
 	}
 
-	private testST(): Sim.Result{
+	private testST(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			this.memory.set(0x3000, {assembly: "", machine: 1234, location: {pc: 0x3000, fileIndex: -1}});
@@ -401,7 +402,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testSTI(): Sim.Result{
+	private testSTI(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
@@ -424,7 +425,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testSTR(): Sim.Result{
+	private testSTR(): Result{
 		for (let i = 0; i < 8; i++){
 			this.resetSimulationState();
 			this.memory.set(0x3000, {assembly: "", machine: 0x3001, location: {pc: 0x3000, fileIndex: -1}});
@@ -450,7 +451,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private async testTRAP(): Promise<Sim.Result>{
+	private async testTRAP(): Promise<Result>{
 		this.resetSimulationState();
 
 		let test0 = await this.TRAP("TRAP X25");
@@ -469,7 +470,7 @@ export class SimulationTester extends Sim.LC3Simulator {
 
 		for (let i = 0; i < 20; i++){
 			if (this.isExpectingInput()) break;
-			await Sim.sleep(250);
+			await sleep(250);
 		}
 
 		if (this.isExpectingInput()){
@@ -510,54 +511,56 @@ export class SimulationTester extends Sim.LC3Simulator {
 		return {success: true};
 	}
 
-	private testMachineCode(): Sim.Result{
+	private testMachineCode(): Result{
 		let mm = "";
 
-		if (this.convertCommandToMachine(0x3000, "ADD", "R1", "R3", "x3") != 0x12C3) mm = mm.concat("Failed ADD Encoding 1\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "ADD", "R2", "R2", "R2") != 0x1482) mm = mm.concat("Failed ADD Encoding 2\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "AND", "R2", "R2", "R2") != 0x5482) mm = mm.concat("Failed AND Encoding\n\t\t\t");
+		let emptyMap: Map<string, Bit16Location> = new Map;
 
-		if (this.convertCommandToMachine(0x3000, "NOT", "R3", "R4", undefined) != 0x973F) mm = mm.concat("Failed NOT Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "ADD", "R1", "R3", "x3") != 0x12C3) mm = mm.concat("Failed ADD Encoding 1\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "ADD", "R2", "R2", "R2") != 0x1482) mm = mm.concat("Failed ADD Encoding 2\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "AND", "R2", "R2", "R2") != 0x5482) mm = mm.concat("Failed AND Encoding\n\t\t\t");
+
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "NOT", "R3", "R4", undefined) != 0x973F) mm = mm.concat("Failed NOT Encoding\n\t\t\t");
 
 		this.resetSimulationState();
 		this.labelLocations.set("LABEL", {pc: 0x3000, fileIndex: -1});
-		if (this.convertCommandToMachine(0x3001, "BRNZ", "LABEL", undefined, undefined) != 0x0DFE) mm.concat("Failed BRnz Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3001, "BRN", "LABEL", undefined, undefined) != 0x09FE) mm = mm.concat("Failed BRn Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3001, "BRNZP", "LABEL", undefined, undefined) != 0x0FFE) mm = mm.concat("Failed BRnzp Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x2FFF, "BRZ", "LABEL", undefined, undefined) != 0x0400) mm = mm.concat("Failed BRz Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3001, this.labelLocations, "BRNZ", "LABEL", undefined, undefined) != 0x0DFE) mm.concat("Failed BRnz Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3001, this.labelLocations, "BRN", "LABEL", undefined, undefined) != 0x09FE) mm = mm.concat("Failed BRn Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3001, this.labelLocations, "BRNZP", "LABEL", undefined, undefined) != 0x0FFE) mm = mm.concat("Failed BRnzp Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x2FFF, this.labelLocations, "BRZ", "LABEL", undefined, undefined) != 0x0400) mm = mm.concat("Failed BRz Encoding\n\t\t\t");
 
-		if (this.convertCommandToMachine(0x3000, "JMP", "R6", undefined, undefined) != 0xC180) mm = mm.concat("Failed JMP Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "JMP", "R6", undefined, undefined) != 0xC180) mm = mm.concat("Failed JMP Encoding\n\t\t\t");
 
-		if (this.convertCommandToMachine(0x3001, "JSR", "LABEL", undefined, undefined) != 0x4FFE) mm = mm.concat("Failed JSR Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "JSRR", "R5", undefined, undefined) != 0x4140) mm = mm.concat("Failed JSRR Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "RET", undefined, undefined, undefined) != 0xC1C0) mm = mm.concat("Failed RET Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3001, this.labelLocations, "JSR", "LABEL", undefined, undefined) != 0x4FFE) mm = mm.concat("Failed JSR Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "JSRR", "R5", undefined, undefined) != 0x4140) mm = mm.concat("Failed JSRR Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "RET", undefined, undefined, undefined) != 0xC1C0) mm = mm.concat("Failed RET Encoding\n\t\t\t");
 		
 		this.resetSimulationState();
 		this.labelLocations.set("LABEL", {pc: 0x300F, fileIndex: -1});
-		if (this.convertCommandToMachine(0x3000, "LD", "R7", "LABEL", undefined) != 0x2E0E) mm = mm.concat("Failed LD Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "LDI", "R7", "LABEL", undefined) != 0xAE0E) mm = mm.concat("Failed LDI Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "LEA", "R7", "LABEL", undefined) != 0xEE0E) mm = mm.concat("Failed LEA Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "ST", "R7", "LABEL", undefined) != 0x3E0E) mm = mm.concat("Failed ST Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "STI", "R7", "LABEL", undefined) != 0xBE0E) mm = mm.concat("Failed ST Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, this.labelLocations, "LD", "R7", "LABEL", undefined) != 0x2E0E) mm = mm.concat("Failed LD Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, this.labelLocations, "LDI", "R7", "LABEL", undefined) != 0xAE0E) mm = mm.concat("Failed LDI Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, this.labelLocations, "LEA", "R7", "LABEL", undefined) != 0xEE0E) mm = mm.concat("Failed LEA Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, this.labelLocations, "ST", "R7", "LABEL", undefined) != 0x3E0E) mm = mm.concat("Failed ST Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, this.labelLocations, "STI", "R7", "LABEL", undefined) != 0xBE0E) mm = mm.concat("Failed ST Encoding\n\t\t\t");
 
-		if (this.convertCommandToMachine(0x3000, "LDR", "R5", "R7", "#1") != 0x6BC1) mm = mm.concat("Failed LDR Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "STR", "R5", "R7", "#1") != 0x7BC1) mm = mm.concat("Failed STR Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "LDR", "R5", "R7", "#1") != 0x6BC1) mm = mm.concat("Failed LDR Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "STR", "R5", "R7", "#1") != 0x7BC1) mm = mm.concat("Failed STR Encoding\n\t\t\t");
 		
 		this.resetSimulationState();
-		if (this.convertCommandToMachine(0x3000, "TRAP", "X25", undefined, undefined) != 0xF025) mm = mm.concat("Failed TRAP x25 Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "HALT", undefined, undefined, undefined) != 0xF025) mm = mm.concat("Failed HALT (x25) Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "TRAP", "X25", undefined, undefined) != 0xF025) mm = mm.concat("Failed TRAP x25 Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "HALT", undefined, undefined, undefined) != 0xF025) mm = mm.concat("Failed HALT (x25) Encoding\n\t\t\t");
 
-		if (this.convertCommandToMachine(0x3000, "TRAP", "X23", undefined, undefined) != 0xF023) mm = mm.concat("Failed TRAP x23 Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "IN", undefined, undefined, undefined) != 0xF023) mm = mm.concat("Failed IN (x23) Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "TRAP", "X23", undefined, undefined) != 0xF023) mm = mm.concat("Failed TRAP x23 Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "IN", undefined, undefined, undefined) != 0xF023) mm = mm.concat("Failed IN (x23) Encoding\n\t\t\t");
 
-		if (this.convertCommandToMachine(0x3000, "TRAP", "X22", undefined, undefined) != 0xF022) mm = mm.concat("Failed TRAP x22 Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "PUTS", undefined, undefined, undefined) != 0xF022) mm = mm.concat("Failed PUTS (x22) Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "TRAP", "X22", undefined, undefined) != 0xF022) mm = mm.concat("Failed TRAP x22 Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "PUTS", undefined, undefined, undefined) != 0xF022) mm = mm.concat("Failed PUTS (x22) Encoding\n\t\t\t");
 
-		if (this.convertCommandToMachine(0x3000, "TRAP", "X21", undefined, undefined) != 0xF021) mm = mm.concat("Failed TRAP x21 Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "OUT", undefined, undefined, undefined) != 0xF021) mm = mm.concat("Failed OUT (x21) Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "TRAP", "X21", undefined, undefined) != 0xF021) mm = mm.concat("Failed TRAP x21 Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "OUT", undefined, undefined, undefined) != 0xF021) mm = mm.concat("Failed OUT (x21) Encoding\n\t\t\t");
 
-		if (this.convertCommandToMachine(0x3000, "TRAP", "X20", undefined, undefined) != 0xF020) mm = mm.concat("Failed TRAP x20 Encoding\n\t\t\t");
-		if (this.convertCommandToMachine(0x3000, "GETC", undefined, undefined, undefined) != 0xF020) mm = mm.concat("Failed GETC (x20) Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "TRAP", "X20", undefined, undefined) != 0xF020) mm = mm.concat("Failed TRAP x20 Encoding\n\t\t\t");
+		if (ConvertLC3ToMachine(0x3000, emptyMap, "GETC", undefined, undefined, undefined) != 0xF020) mm = mm.concat("Failed GETC (x20) Encoding\n\t\t\t");
 		
 		return {success: mm == "", message: mm};
 	}
