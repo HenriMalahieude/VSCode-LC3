@@ -19,7 +19,7 @@ function pathToUri(path: string) {
 	}
 }
 
-export class lc3DebugAdapter extends DAP.DebugSession{
+export class LC3SimulatorAdapter extends DAP.DebugSession{
 	private static threadID = 1;
 
 	private _debugger: LC3Simulator | undefined;
@@ -188,7 +188,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 		// runtime supports no threads so just return a default thread.
 		response.body = {
 			threads: [
-				new DAP.Thread(lc3DebugAdapter.threadID, "Next Instruction")
+				new DAP.Thread(LC3SimulatorAdapter.threadID, "Next Instruction")
 			]
 		};
 		this.sendResponse(response);
@@ -289,7 +289,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 					this._debugger.pc = v-1;
 					this._debugger.currentLine = location.location.fileIndex-1;
 					response.body = {value: this.formatNumber(v)};
-					this.sendEvent(new DAP.InvalidatedEvent(undefined, lc3DebugAdapter.threadID, 0));
+					this.sendEvent(new DAP.InvalidatedEvent(undefined, LC3SimulatorAdapter.threadID, 0));
 				}
 			}
 		}else if (args.name.startsWith("0x") || args.name.startsWith("#")){ //Edit memory
@@ -428,7 +428,7 @@ export class lc3DebugAdapter extends DAP.DebugSession{
 	}
 
 	private stopEvent(ni: string){
-		this.sendEvent(new DAP.StoppedEvent(ni, lc3DebugAdapter.threadID)) //NOTE: These events require a ThreadId, or it will hitch forever
+		this.sendEvent(new DAP.StoppedEvent(ni, LC3SimulatorAdapter.threadID)) //NOTE: These events require a ThreadId, or it will hitch forever
 	}
 
 	private stdoutUpdate(){

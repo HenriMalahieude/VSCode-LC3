@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import * as Sim from "../Simulator"
+import * as Sim from "../Simulator/Simulator"
 
 export class SimulationTester extends Sim.LC3Simulator {
 	constructor(){
