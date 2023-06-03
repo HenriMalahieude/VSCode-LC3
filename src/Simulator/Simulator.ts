@@ -241,13 +241,19 @@ export class LC3Simulator extends EventEmitter{
 		return {success: true};
 	}
 
-	public async run(): Promise<Result>{ //TODO Breakpoints in here
+	public async run(): Promise<Result>{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
 		this.currentBreakpoint = undefined;
 
 		for (let i = 0; i < this.recursionLimit * this.runRecursionMultiplier; i++){
 			this.currentLine += 1;
+
+			//Check that we aren't "starting up" from a breakpoint
+			//However if we aren't then stop ofc
+			if (this.onBreakpoint() && i > 0){
+				return {success: true};
+			}
 
 			let state = await this.interpretCommand(this.file.lineAt(this.currentLine).text);
 			if (!state.success){
@@ -269,7 +275,12 @@ export class LC3Simulator extends EventEmitter{
 			}
 		}
 
-		return {success: false, message: "Reached recursion limit of run. You may have an infinite loop in your code.", context: "Runtime", line: this.currentLine+1};
+		return {
+			success: false, 
+			message: "Reached recursion limit of run. You may have an infinite loop in your code.\n(Intended Behavior? Try adding breakpoints to reset recursion limit.)", 
+			context: "Runtime", 
+			line: this.currentLine + 1
+		};
 	}
 
 	//-----------------------Meta-Functions-----------------------
