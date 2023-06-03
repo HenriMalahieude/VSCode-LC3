@@ -29,6 +29,7 @@ export function emptyLC3Data(): LC3Data{
 
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+//You may notice that I am not consistent with my public/private/protected... this just makes my life easier
 export class LC3Simulator extends EventEmitter{
 	status: Result = {success: true};
 	halted: boolean = false;
@@ -41,8 +42,8 @@ export class LC3Simulator extends EventEmitter{
 	mcr: number = 0; //Located at 0xFFFE
 	mcc: number = 0; //Located at 0xFFFF
 
-	public file: vscode.TextDocument | undefined;
-	public currentLine: number = -1;
+	file: vscode.TextDocument | undefined;
+	currentLine: number = -1;
 	protected processed: boolean = false;
 
 	//Map .ORIG x#### locations to file line numbers (for return/jumping/conditionals)
@@ -54,6 +55,12 @@ export class LC3Simulator extends EventEmitter{
 	protected recursionLimit: number = 10000;
 	protected runRecursionMultiplier: number = 10; //When you click run
 
+	//Debug control
+	protected breakpoints: number[] = [];
+	protected currentBreakpoint: number | undefined;
+	protected jumpStack: number[] = [];
+
+	//Output control
 	protected stdout: number[] = [];
 	protected stdin: number[] = [];
 	protected stdinExpect: boolean = false; //Is true if stdin is expected and stdin is currently empty
@@ -67,12 +74,6 @@ export class LC3Simulator extends EventEmitter{
 		if (f) this.file = f;
 		this.subroutineLocations = new Map<number, number>();
 		this.labelLocations = new Map<string, Bit16Location>();
-
-		if (f && this.file) {
-			console.log("Opened and ready to simulate: " + this.file.fileName);
-		}else{
-			//console.log("Opened simulator in testing mode.");
-		}
 
 		this.EventConnect();
 	}
@@ -114,10 +115,19 @@ export class LC3Simulator extends EventEmitter{
 	}
 
 	public getCurrentInstruction(offset:number = 0): string{
-		if (!this.file) return "";
+		if (!this.file || (this.currentLine + offset >= this.file.lineCount)) return "";
 		let lineString = this.file.lineAt(this.currentLine + offset);
 
 		return lineString.text;
+	}
+
+	public addBreakpoint(line: number){
+		this.breakpoints.push(line - 1);
+	}
+
+	public clearBreakpoints(){
+		this.breakpoints = [];
+		this.currentBreakpoint = undefined;
 	}
 
 	//TODO: Have it stop on the next command after a RET
@@ -130,14 +140,25 @@ export class LC3Simulator extends EventEmitter{
 			return this.status;
 		}
 		
-		//Two Step Over Modes: Step to First Command, Step to Next Command
+		//Two Step Over Modes: Step to Next Command, Step over Whitespace
 		let currentText = this.file.lineAt(Math.max(this.currentLine+1, 0)).text;
-		let overWhiteSpace = currentText.startsWith(".") || currentText.startsWith(";") || currentText.length <= 0
-
+		let overWhiteSpace = currentText.startsWith(".") || currentText.startsWith(";") || currentText.length <= 0;
 		if ((pc == undefined && !overWhiteSpace) || pc != undefined){ //We need to skip to the next command
 			let nextPc = (pc != undefined) ? pc : (this.pc + 1); //Note where we need to stop
 			for (let i = 0; i < this.recursionLimit; i++){ //Now keep going until recursion limit is reached or.... until we find the PC
-				this.currentLine += 1;
+				this.currentLine++;
+
+				//First pass for break points
+				if (this.onBreakpoint()){
+					//Check that we haven't stopped there before, and that we are "recursing"
+					if (this.currentBreakpoint != this.currentLine && i > 0){
+						this.currentBreakpoint = this.currentLine;
+						this.currentLine--;
+						return {success: true};
+					}
+
+					this.currentBreakpoint = undefined;
+				}
 
 				let state = await this.interpretCommand(this.file.lineAt(this.currentLine).text);
 				if (!state.success){
@@ -148,9 +169,17 @@ export class LC3Simulator extends EventEmitter{
 					return state;
 				}
 
-				if (this.pc == nextPc){ //We've located the command we need to stop on, therefore find next command
+				//We've located the command we need to stop on, therefore find next command
+				if (this.pc == nextPc){
 					for (let i = this.currentLine+1; i < this.file.lineCount; i++){
 						this.currentLine = i;
+
+						//If the whitespace were gonna skip is a breakpoint or not
+						if (this.onBreakpoint()){ 
+							this.currentLine--;
+							return state;
+						}
+
 						currentText = this.file.lineAt(Math.max(this.currentLine, 0)).text;
 						if (!currentText.startsWith(".") && !currentText.startsWith(";") && currentText.length > 0){
 							this.currentLine--;
@@ -160,9 +189,11 @@ export class LC3Simulator extends EventEmitter{
 					return {success: false, message: "Reached end of file before halt? (2)"};
 				}
 
+				//Check that we havent just ended the program
 				if (this.status.success && this.halted) return {success: true};
 			}
-		}else{ //Just skip over the white space until the next command
+		}else{ 
+			//Just skip over the white space until the next command, it's fine to skip breakpoints here
 			for (let i = this.currentLine+1; i < this.file.lineCount; i++){
 				this.currentLine = i;
 				currentText = this.file.lineAt(Math.max(this.currentLine, 0)).text; //can't reuse the old because of new currentLine
@@ -195,6 +226,8 @@ export class LC3Simulator extends EventEmitter{
 			this.halted = true;
 		}
 
+		this.currentBreakpoint = undefined;
+
 		return succ;
 	}
 
@@ -209,9 +242,11 @@ export class LC3Simulator extends EventEmitter{
 		return {success: true};
 	}
 
-	public async run(): Promise<Result>{//TODO: Add in Breakpoints
+	public async run(): Promise<Result>{ //TODO Breakpoints in here
 		console.log("Asked to Run!")
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
+
+		this.currentBreakpoint = undefined;
 
 		for (let i = 0; i < this.recursionLimit * this.runRecursionMultiplier; i++){
 			this.currentLine += 1;
@@ -259,6 +294,7 @@ export class LC3Simulator extends EventEmitter{
 			return "";
 		}
 
+		//First pass for labels/symbols
 		for (let i = 1; i-1 < max; i++){
 			let unformattedTxt = getLine(i-1, this.file, testingFile);
 			let txt = unformattedTxt.trim().toLocaleUpperCase();
@@ -412,7 +448,7 @@ export class LC3Simulator extends EventEmitter{
 					subroutineMark = false;
 				}
 			}else{
-				return {success: false, line: i, message: "Missing location to place opcodes at.\n(.ORIG x3000?)"};
+				return {success: false, line: i, message: "Missing location for label reference at.\n(.ORIG x3000?)"};
 			}
 
 			//Otherwise, it's a command/opcode and we just record it into memory in the later loop
@@ -426,6 +462,7 @@ export class LC3Simulator extends EventEmitter{
 		currentLocation = -1;
 		subroutineMark = false;
 
+		//Second Pass for opcodes/syntax
 		for (let i = 1; i-1 < max; i++){
 			let unformattedTxt = getLine(i-1, this.file, testingFile);
 			let txt = unformattedTxt.trim().toLocaleUpperCase();
@@ -452,9 +489,11 @@ export class LC3Simulator extends EventEmitter{
 				command.shift();
 
 				if (!this.startsWithCommand(command[0]+" ") || command.length <= 0){ //Catching anything
-					if (codeAllowed) currentLocation++;
+					//if (codeAllowed) currentLocation++;
 					continue;
 				}
+
+				txt = txt.substring(txt.indexOf(" ")+1); //For proper assembly setting
 			}
 			
 			let entry: LC3Data = {
@@ -513,7 +552,7 @@ export class LC3Simulator extends EventEmitter{
 				message: "Line of Code did not match memory.\n(Did you change something during simulation? Preprocessor didn't catch it, try restarting debugger before running the line.)",
 				line: this.currentLine+1
 			}
-		}
+		} //TODO: Ensure that machine is still the same for these commands
 
 		//Macros
 		if (manip.match(/\s*GETC\s*/gm)){
@@ -1323,5 +1362,15 @@ export class LC3Simulator extends EventEmitter{
 		if (this.condition_codes.N) this.psr += 0b100;
 		if (this.condition_codes.Z) this.psr += 0b010;
 		if (this.condition_codes.P) this.psr += 0b001;
+	}
+
+	protected onBreakpoint(offset: number = 0): boolean{
+		for (let i = 0; i < this.breakpoints.length; i++){
+			if ((this.currentLine + offset) == this.breakpoints[i]){
+				return true;
+			}
+		}
+
+		return false;
 	}
 }
