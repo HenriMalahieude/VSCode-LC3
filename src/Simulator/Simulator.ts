@@ -403,7 +403,7 @@ export class LC3Simulator extends EventEmitter{
 					let total = this.convertNumber(command[2]);
 					if (Number.isNaN(total)) return {success: false, line: i, message: "Could not convert number (NaN err). Missing (b, x, #) number specifier."};
 
-					for (let j = 1; j < Number(command[2]); j++){
+					for (let j = 1; j < total; j++){
 						currentLocation += 1;
 						this.memory.set(currentLocation, 
 							{

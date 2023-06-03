@@ -1,4 +1,3 @@
-import * as vscode from "vscode"
 import * as Sim from "../Simulator/Simulator"
 
 export class SimulationTester extends Sim.LC3Simulator {
@@ -19,13 +18,13 @@ export class SimulationTester extends Sim.LC3Simulator {
 			}
 		}
 
-		console.log("\tPreprocessor Test:");
+		console.log("\tPreprocessor Test");
 		check("Preprocess", this.testPreprocess());
 
-		console.log("\tMachine Code Translator Test:")
+		console.log("\tMachine Code Translator Test")
 		check("Machine Code", this.testMachineCode());
 		
-		console.log("\tOp-Code Test:");
+		console.log("\tOp-Code Test");
 		
 		check("ADD", this.testADD());
 		check("AND", this.testAND());
