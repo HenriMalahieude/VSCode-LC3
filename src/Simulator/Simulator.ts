@@ -114,7 +114,6 @@ export class LC3Simulator extends EventEmitter{
 		this.currentBreakpoint = undefined;
 	}
 
-	//TODO: Have it stop on the next command after a RET
 	public async stepOver(forward: boolean, pc: number | undefined): Promise<Result>{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
 
@@ -144,13 +143,24 @@ export class LC3Simulator extends EventEmitter{
 					this.currentBreakpoint = undefined;
 				}
 
-				let state = await this.interpretCommand(this.GetLineOfText(this.currentLine));
+				let commandToInterpret = this.GetLineOfText(this.currentLine);
+
+				let state = await this.interpretCommand(commandToInterpret);
 				if (!state.success){
 					state.line = this.currentLine+1;
 					state.context = "Runtime"
 					this.status = state;
 					this.halted = true;
 					return state;
+				}
+
+				//Detect if it's RET or JMP, remove any labels in front
+				if (commandToInterpret.split(" ").length <= 1 && !this.startsWithCommand(commandToInterpret)){
+					commandToInterpret = commandToInterpret.substring(commandToInterpret.indexOf(" ") + 1)
+				}
+				if (commandToInterpret.startsWith("JMP ") || commandToInterpret.search(/RET\b/gm) == 0){
+					//Stop Here:
+					return {success: true};
 				}
 
 				//We've located the command we need to stop on, therefore find next command
@@ -1092,6 +1102,12 @@ export class LC3Simulator extends EventEmitter{
 			this.stdinExpect = false;
 		} else if (numerical == 0x25){ //HALT: Stop computer
 			this.halted = true;
+
+			let haltString = "\n------- Halting the LC-3 Simulator -------\n";
+			//this.stdout.push('\n'.charCodeAt(0));
+			for (let i = 0; i < haltString.length; i++){
+				this.stdout.push(haltString.charCodeAt(i));
+			}
 		} else {
 			return {success: false, message: "Unknown trap vector. Ending simulation."};
 		}
@@ -1125,12 +1141,12 @@ export class LC3Simulator extends EventEmitter{
 		
 		if (line.startsWith("TRAP ")) return true;
 
-		if (line.match(/\s*HALT\s*/gm) && line.startsWith("HALT")) return true;
-		if (line.match(/\s*PUTS\s*/gm) && line.startsWith("PUTS")) return true;
-		if (line.match(/\s*GETC\s*/gm) && line.startsWith("GETC")) return true;
-		if (line.match(/\s*RET\s*/gm) && line.startsWith("RET")) return true;
-		if (line.match(/\s*OUT\s*/gm) && line.startsWith("OUT")) return true;
-		if (line.match(/\s*IN\s*/gm) && line.startsWith("IN")) return true;
+		if (line.match(/\bHALT\b/gm) && line.startsWith("HALT")) return true;
+		if (line.match(/\bPUTS\b/gm) && line.startsWith("PUTS")) return true;
+		if (line.match(/\bGETC\b/gm) && line.startsWith("GETC")) return true;
+		if (line.match(/\bRET\b/gm) && line.startsWith("RET")) return true;
+		if (line.match(/\bOUT\b/gm) && line.startsWith("OUT")) return true;
+		if (line.match(/\bIN\b/gm) && line.startsWith("IN")) return true;
 
 		return false;
 	}
