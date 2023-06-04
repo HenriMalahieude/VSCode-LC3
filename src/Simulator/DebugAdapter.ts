@@ -462,7 +462,9 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 			while (v != undefined){
 				//console.log("Stdout: ", v);
 				this.outputChannel.show();
-				if (v >= 31 && v <= 127){
+				if (v == 10){
+					this.outputChannel.appendLine("");
+				}else if (v >= 31 && v <= 127){
 					this.outputChannel.append(String.fromCharCode(v));
 				}else if (v >= 127){
 					this.outputChannel.append("[?]");
