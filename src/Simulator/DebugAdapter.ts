@@ -28,6 +28,10 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 	private outputChannel: vscode.OutputChannel;
 
 	private maxMemoryView: number = 16;
+
+	private customMemoryHead:boolean = false;
+	private memoryHead:number = 0;
+
 	private maxStackView: number = 8;
 
 	private _addressesInHex = true;
@@ -199,7 +203,6 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 	}
 
 	protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request): Promise<void> {
-		//TODO: Searching memory
 		if (this._debugger){
 			if (request && request.arguments) {	
 				if (request.arguments.variablesReference == 1){
@@ -220,9 +223,11 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 					};
 				}else if (request.arguments.variablesReference == 2){
 					let vArr = [];
-
+					
 					let curProgramCount = this._debugger.pc + 1;
-					let memoryHead = curProgramCount - (curProgramCount % 16);
+					let memoryHead = (this.customMemoryHead) ? this.memoryHead : (curProgramCount - (curProgramCount % 16));
+
+					vArr.push({name: "Memory Start", type: "string", value: this.formatNumber(memoryHead), variablesReference: 0});
 
 					for (let i = 0; i < this.maxMemoryView; i++){
 						let contents = this._debugger.memory.get(memoryHead + i);
@@ -306,6 +311,22 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 					this._debugger.memory.set(address, m);
 					response.body = {value: m.assembly + " (" + this.formatNumber(v) + ")"}
 				}
+			}
+		} else if (args.name == "Memory Start") {
+			let location = Number(args.value);
+			if (!Number.isNaN(location)){
+				if (location >= 0 && location <= 0xFFFF){
+					this.customMemoryHead = true;
+					this.memoryHead = location;
+					response.body = {value: this.formatAddress(location)};
+
+					this.outputChannel.appendLine("To return to Auto Memory View, edit \"Memory Start\" variable to -1");
+				}else{
+					this.customMemoryHead = false;
+					response.body = {value: this.formatAddress(((this._debugger.pc + 1) - ((this._debugger.pc + 1) % 16)))}
+				}
+
+				this.stopEvent("memory update");
 			}
 		}else{
 			return this.sendErrorResponse(response, {
