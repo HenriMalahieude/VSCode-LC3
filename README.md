@@ -8,18 +8,22 @@
 ![FirstError](./pictures/error1.png) ![SecondError](./pictures/error2.png)
 
 ## Integrated Simulated "Debugger"
-* Use VSCode's Debugger to Simulate LC-3 Programs
-	* ![HowTo](./pictures/How%20to%20Sim%20LC3.gif)
-* Simple Register and Memory View
-	* ![SimView](./pictures/Memory_View.gif) ![MemView](./pictures/memory_view2.png)
-* Memory Table/Search
-	* TODO
-* Easy to access stack
-	* ![stack](./pictures/stack_view.png)
-* Editable memory
-	* ![Edit](./pictures/edit_vars.png)
-* Breakpoints
-	* ![bp1](./pictures/breakpoints2.png) ![bp2](./pictures/breakpoints1.png)
+### Use VSCode's Debugger to Simulate LC-3 Programs
+![HowTo](./pictures/How%20to%20Sim%20LC3.gif)
+
+### Simple Register and Memory View
+![SimView](./pictures/Memory_View.gif) ![MemView](./pictures/memory_view2.png)
+
+### Memory Table/Search
+![MemBefore](./pictures/mem_search_before.png)  ![MemDuring](./pictures/mem_search_during.png)  ![MemAfter](./pictures/mem_search_after.png)
+### Easy to access stack
+![stack](./pictures/stack_view.png)
+
+### Editable memory
+![Edit](./pictures/edit_vars.png)
+
+### Breakpoints
+![bp1](./pictures/breakpoints2.png) ![bp2](./pictures/breakpoints1.png)
 
 
 ## Notes on use:
