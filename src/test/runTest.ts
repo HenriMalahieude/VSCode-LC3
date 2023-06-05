@@ -1,4 +1,4 @@
-import { SimulationTester } from './testSimulator'
+import { SimulationTester } from '../Simulator/testSimulator'
 
 async function main() {
 	try {
