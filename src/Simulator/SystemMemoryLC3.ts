@@ -133,10 +133,13 @@ export function SetSystemMemory(memory: Map<number, LC3Data>){
 	}
 
 	MakeLC3Data(memory, "Privilege Violation Message", 0x0, 0x03B3)
+	MakeLC3Data(memory, "Unused by Sim", 0x0, 0x03B4)
 
 	MakeLC3Data(memory, "Illegal Opcode Message", 0x0, 0x03D6)
+	MakeLC3Data(memory, "Unused by Sim", 0x0, 0x03D7)
 
 	MakeLC3Data(memory, "Access Violation Message", 0x0, 0x03F4)
+	MakeLC3Data(memory, "Unused by Sim", 0x0, 0x03F5)
 
 	MakeLC3Data(memory, "RTI ;From BAD_INT", 0x8000, 0x0413)
 }
