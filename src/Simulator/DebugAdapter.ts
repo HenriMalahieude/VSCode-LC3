@@ -237,7 +237,11 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 							contents = EmptyLC3Data();
 							stringMachine = contents.assembly + " (0x?)";
 						}else{
-							stringMachine = contents.assembly + " (" + this.formatNumber(contents.machine) + ")";
+							let asm = contents.assembly;
+							if (contents.assembly == "\n"){
+								asm = "\\n"
+							}
+							stringMachine = asm + " (" + this.formatNumber(contents.machine) + ")";
 						}
 						
 						vArr.push({name: this.formatAddress(memoryHead + i), type: "string", value: stringMachine, variablesReference: 0});
