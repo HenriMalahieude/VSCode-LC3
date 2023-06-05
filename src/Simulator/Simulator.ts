@@ -19,7 +19,7 @@ export class LC3Simulator extends EventEmitter{
 	memory: Map<number, LC3Data>;
 	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the last command instead of the next
 	psr: number = 0x8002; //[15] = Privelege, [2:0] = NZP
-	mcr: number = 0; //Located at 0xFFFE, used externally
+	mcr: number = 0x8000; //Located at 0xFFFE, used externally
 	mcc: number = 0; //Located at 0xFFFF
 
 	file: TextFile | undefined;
@@ -55,7 +55,7 @@ export class LC3Simulator extends EventEmitter{
 		this.labelLocations = new Map<string, Bit16Location>();
 
 		if (f){
-			//SetSystemMemory(this.memory);
+			SetSystemMemory(this.memory);
 		}
 
 		this.EventConnect();

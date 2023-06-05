@@ -25,7 +25,7 @@ export function SetSystemMemory(memory: Map<number, LC3Data>){
 	MakeLC3Data(memory, ".FILL EX_ILL", 0x03D6, 0x0101)
 	MakeLC3Data(memory, ".FILL EX_ACV", 0x03F4, 0x0102)
 
-	//First System Routine
+	//First System Routine, set up User PSR and PC
 	MakeLC3Data(memory, "LD R6, OS_SP", 0x2C07, 0x0200)
 	MakeLC3Data(memory, "LD R0, USER_PSR", 0x2007, 0x0201)
 	MakeLC3Data(memory, "ADD R6, R6, #-1", 0x1DBF, 0x0202)
@@ -52,8 +52,8 @@ export function SetSystemMemory(memory: Map<number, LC3Data>){
 	MakeLC3Data(memory, "OS_KBDR .FILL xFE02", 0xFE02, 0x0305)
 
 	//OUT
-	MakeLC3Data(memory, "ADD R6, R6, #-1", 0x1DBF, 0x0306) //This looks like a mistake on LC3-Tools's Part, they're possibly missing some assembly here
-	MakeLC3Data(memory, "STI R1, R6, #0", 0x7380, 0x0307)
+	MakeLC3Data(memory, "ADD R6, R6, #-1", 0x1DBF, 0x0306)  //It looks weird, but that's because I assume the system stack pointer is being auto put into R6...
+	MakeLC3Data(memory, "STR R1, R6, #0", 0x7380, 0x0307) 
 	MakeLC3Data(memory, "LDI R1, OS_DSR", 0xA205, 0x0308)
 	MakeLC3Data(memory, "BRzp TRAP_OUT_WAIT", 0x07FE, 0x0309)
 	MakeLC3Data(memory, "STI R0, OS_DDR", 0xB004, 0x030A)
@@ -65,4 +65,78 @@ export function SetSystemMemory(memory: Map<number, LC3Data>){
 
 	//MakeLC3Data(memory, "", 0x0, 0x0)
 	//TODO: The rest
+
+	//PUTS
+	MakeLC3Data(memory, "ADD R6, R6, #-1", 0x1DBF, 0x0310)
+	MakeLC3Data(memory, "STR R0, R6, #0", 0x7180, 0x0311)
+	MakeLC3Data(memory, "ADD R6, R6, #-1", 0x1DBF, 0x0312)
+	MakeLC3Data(memory, "STR R1, R6, #0", 0x7380, 0x0313)
+	MakeLC3Data(memory, "ADD R1, R0, #0", 0x1220, 0x0314)
+	MakeLC3Data(memory, "LDR R0, R1, #0", 0x6040, 0x0315)
+	MakeLC3Data(memory, "BRz TRAP_PUTS_DONE", 0x0403, 0x0316)
+	MakeLC3Data(memory, "OUT", 0xF021, 0x0317)
+	MakeLC3Data(memory, "ADD R1, R1, #1", 0x1261, 0x0318)
+	MakeLC3Data(memory, "BRnzp TRAP_PUTS_LOOP", 0x0FFB, 0x0319)
+	MakeLC3Data(memory, "LDR R1, R6, #0", 0x6380, 0x031A)
+	MakeLC3Data(memory, "ADD R6, R6, #1", 0x1DA1, 0x031B)
+	MakeLC3Data(memory, "LDR R0, R6, #0", 0x6180, 0x031C)
+	MakeLC3Data(memory, "ADD R6, R6, #0", 0x1DA1, 0x031D)
+	MakeLC3Data(memory, "RTI", 0x8000, 0x031E)
+
+	//IN
+	MakeLC3Data(memory, "LEA R0, TRAP_IN_MSG", 0xE00B, 0x031F)
+	MakeLC3Data(memory, "PUTS", 0xF022, 0x0320)
+	MakeLC3Data(memory, "GETC", 0xF020, 0x0321)
+	MakeLC3Data(memory, "OUT", 0xF021, 0x0322)
+	MakeLC3Data(memory, "ADD R6, R6, #-1", 0x1DBF, 0x0323) //Here it's outputting a new line
+	MakeLC3Data(memory, "STR R0, R6, #0", 0x7180, 0x0324)
+	MakeLC3Data(memory, "AND R0, R0, #0", 0x5020, 0x0325)
+	MakeLC3Data(memory, "ADD R0, R0, #10", 0x102A, 0x0326)
+	MakeLC3Data(memory, "OUT", 0xF021, 0x0327)
+	MakeLC3Data(memory, "LDR R0, R6, #0", 0x6180, 0x0328)
+	MakeLC3Data(memory, "ADD R6, R6, #1", 0x1DA1, 0x0329)
+	MakeLC3Data(memory, "RTI", 0x8000, 0x032A)
+	
+	let string = "\nInput a character> "
+	for (let i = 0; i < string.length; i++){
+		MakeLC3Data(memory, string.charAt(i), string.charCodeAt(i), 0x032B + i);
+	}
+
+
+	//PUTSP
+	MakeLC3Data(memory, "PUTSP unused by Sim", 0x0, 0x0340)
+
+	//HALT
+	MakeLC3Data(memory, "LEA R0, TRAP_HALT_MSG", 0xE008, 0x0366)
+	MakeLC3Data(memory, "PUTS", 0xF022, 0x0367)
+	MakeLC3Data(memory, "LDI R0, OS_MCR", 0xA004, 0x0368)
+	MakeLC3Data(memory, "LD R1, MASK_HI", 0x2204, 0x0369)
+	MakeLC3Data(memory, "AND R0, R0, R1", 0x5001, 0x036A)
+	MakeLC3Data(memory, "STI R0, OS_MCR", 0xB001, 0x036B)
+	MakeLC3Data(memory, "BRnzp TRAP_HALT", 0x00FF9, 0x036C)
+	MakeLC3Data(memory, "OS_MCR .FILL xFFFE", 0xFFFE, 0x036D)
+	MakeLC3Data(memory, "MASK_HI .FILL x7FFF", 0x7FFF, 0x036E)
+
+	string = "\n\n--- Halting the LC-3 ---\n\n"
+	for (let i = 0; i < string.length; i++){
+		MakeLC3Data(memory, string.charAt(i), string.charCodeAt(i), 0x036F + i);
+	}
+
+	//BAD_TRAP
+	MakeLC3Data(memory, "LEA R0, BAD_TRAP_MSG", 0xE002, 0x038C)
+	MakeLC3Data(memory, "PUTS", 0xF022, 0x038D)
+	MakeLC3Data(memory, "HALT", 0xF025, 0x038E)
+
+	string = "\n\n--- Undefined trap executed ---\n\n"
+	for (let i = 0; i < string.length; i++){
+		MakeLC3Data(memory, string.charAt(i), string.charCodeAt(i), 0x038F + i);
+	}
+
+	MakeLC3Data(memory, "Privilege Violation Message", 0x0, 0x03B3)
+
+	MakeLC3Data(memory, "Illegal Opcode Message", 0x0, 0x03D6)
+
+	MakeLC3Data(memory, "Access Violation Message", 0x0, 0x03F4)
+
+	MakeLC3Data(memory, "RTI ;From BAD_INT", 0x8000, 0x0413)
 }
