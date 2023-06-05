@@ -63,9 +63,6 @@ export function SetSystemMemory(memory: Map<number, LC3Data>){
 	MakeLC3Data(memory, "OS_DSR .FILL xFE04", 0xFE04, 0x030E)
 	MakeLC3Data(memory, "OS_DDR .FILL xFE06", 0xFE06, 0x030F)
 
-	//MakeLC3Data(memory, "", 0x0, 0x0)
-	//TODO: The rest
-
 	//PUTS
 	MakeLC3Data(memory, "ADD R6, R6, #-1", 0x1DBF, 0x0310)
 	MakeLC3Data(memory, "STR R0, R6, #0", 0x7180, 0x0311)

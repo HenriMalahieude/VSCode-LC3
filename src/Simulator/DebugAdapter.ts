@@ -3,8 +3,8 @@
 import * as vscode from 'vscode';
 import * as DAP from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol/lib/debugProtocol";
-import { LC3Simulator } from "./Simulator";
-import { Result, EmptyLC3Data } from "./LC3Utils";
+import { LC3Simulator } from "./SimSubmodule/Simulator";
+import { Result, EmptyLC3Data } from "./SimSubmodule/LC3Utils";
 import * as path from "path";
 
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {

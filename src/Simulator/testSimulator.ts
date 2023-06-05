@@ -1,5 +1,5 @@
-import { LC3Simulator, sleep } from "./Simulator"
-import { Result, ConvertLC3ToMachine, Bit16Location } from "./LC3Utils";
+import { LC3Simulator, sleep } from "./SimSubmodule/Simulator"
+import { Result, ConvertLC3ToMachine, Bit16Location } from "./SimSubmodule/LC3Utils";
 
 export class SimulationTester extends LC3Simulator {
 	constructor(){
