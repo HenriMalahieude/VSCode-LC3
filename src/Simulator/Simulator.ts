@@ -19,7 +19,7 @@ export class LC3Simulator extends EventEmitter{
 	memory: Map<number, LC3Data>;
 	pc: number = 0x2FFF; //NOTE: Know that this is not "really" the PC since it tracks the last command instead of the next
 	psr: number = 0x8002; //[15] = Privelege, [2:0] = NZP
-	mcr: number = 0; //Located at 0xFFFE
+	mcr: number = 0; //Located at 0xFFFE, used externally
 	mcc: number = 0; //Located at 0xFFFF
 
 	file: TextFile | undefined;
@@ -27,7 +27,7 @@ export class LC3Simulator extends EventEmitter{
 	protected processed: boolean = false;
 
 	//Map .ORIG x#### locations to file line numbers (for return/jumping/conditionals)
-	protected subroutineLocations: Map<number, number>;
+	protected subroutineLocations: Map<number, number>; //NOTE: May be possible to delete
 
 	//Map Labels to locations in memory
 	protected labelLocations: Map<string, Bit16Location>; //For variables, all the way to positional labels
@@ -37,8 +37,7 @@ export class LC3Simulator extends EventEmitter{
 
 	//Debug control
 	protected breakpoints: number[] = [];
-	protected currentBreakpoint: number | undefined;
-	protected jumpStack: number[] = [];
+	protected jumpStack: number[] = []; //Stack of PCs
 
 	//Output control
 	protected stdout: number[] = [];
@@ -111,7 +110,6 @@ export class LC3Simulator extends EventEmitter{
 
 	public clearBreakpoints(){
 		this.breakpoints = [];
-		this.currentBreakpoint = undefined;
 	}
 
 	public async stepOver(forward: boolean, pc: number | undefined): Promise<Result>{
@@ -132,15 +130,10 @@ export class LC3Simulator extends EventEmitter{
 				this.currentLine++;
 
 				//First pass for break points
-				if (this.onBreakpoint()){
-					//Check that we haven't stopped there before, and that we are "recursing"
-					if (this.currentBreakpoint != this.currentLine && i > 0){
-						this.currentBreakpoint = this.currentLine;
-						this.currentLine--;
-						return {success: true};
-					}
-
-					this.currentBreakpoint = undefined;
+				//Check that we aren't stepping from a breakpoint
+				if (this.onBreakpoint() && i > 0){
+					this.currentLine--;
+					return {success: true};
 				}
 
 				let commandToInterpret = this.GetLineOfText(this.currentLine);
@@ -220,8 +213,6 @@ export class LC3Simulator extends EventEmitter{
 			this.halted = true;
 		}
 
-		this.currentBreakpoint = undefined;
-
 		return succ;
 	}
 
@@ -229,16 +220,27 @@ export class LC3Simulator extends EventEmitter{
 		if (!this.status.success || this.halted) {return this.status;}
 
 		//Detect if this command is part of a subroutine
+		for (let i = 0; i < this.recursionLimit; i++){
+			let oldStackCount = this.jumpStack.length;
 
-		//TODO: Make a stack of PCs that this can jump to, only pushed into by JSRR and JSR and JUMP
+			let stat = await this.stepIn(true);
 
-		return {success: true};
+			if (!stat.success){
+				return stat;
+			}
+
+			if (oldStackCount > this.jumpStack.length){
+				return {success: true};
+			}
+
+			//NOTE: Maybe add in breakpoints?
+		}
+
+		return {success: false, message: "Could not locate ", line: this.currentLine, context: "Runtime"};
 	}
 
 	public async run(): Promise<Result>{
 		if (!this.status.success || this.halted || !this.file) {return this.status;}
-
-		this.currentBreakpoint = undefined;
 
 		for (let i = 0; i < this.recursionLimit * this.runRecursionMultiplier; i++){
 			this.currentLine += 1;
@@ -740,10 +742,18 @@ export class LC3Simulator extends EventEmitter{
 		}
 
 		let whereTo:LC3Data | undefined = this.memory.get(this.registers[destIndex]);
-		if (whereTo === undefined){
-			return {success: false, message: "Attempting to jump to unregistered location in memory. Forcing simulation end."};
+		if (whereTo === undefined || whereTo.location.pc < 0x3000 || whereTo.location.pc >= 0xFE00){
+			return {success: false, message: "Attempting to jump to unregistered location in memory or system memory. Forcing simulation end."};
 		}
-		
+
+		//In case we are returning from anything
+		if (this.jumpStack.length > 0){
+			let lastElement = this.jumpStack.pop();
+			if (lastElement != undefined && whereTo.location.pc != lastElement){
+				this.jumpStack.push(lastElement);
+			}
+		}
+
 		this.pc=whereTo.location.pc-1;
 		this.currentLine = whereTo.location.fileIndex-1;
 
@@ -755,14 +765,16 @@ export class LC3Simulator extends EventEmitter{
 		let destination = command[1];
 
 		let loc = this.labelLocations.get(destination);
-		if (loc == undefined){
-			return {success: false, message: "Attempting to jump to unregistered location in memory. Forcing simulation end."};
+		if (loc == undefined || loc.pc < 0x3000 || loc.pc >= 0xFE00){
+			return {success: false, message: "Attempting to jump to unregistered location in memory or system memory. Forcing simulation end."};
 		}
 
 		if (!WithinBitLimit(loc.pc - this.pc, 11)) return {success: false, message: "Label does not fit within 11 bit limit.\n[-1024, 1023]"};
 
 		let savePc = this.pc+1;
 		this.registers[7] = savePc;
+
+		this.jumpStack.push(savePc);
 
 		this.pc = loc.pc-1;
 		this.currentLine = loc.fileIndex-1;
@@ -791,6 +803,7 @@ export class LC3Simulator extends EventEmitter{
 
 		let savePc = this.pc+1;
 		this.registers[7] = savePc;
+		this.jumpStack.push(savePc);
 
 		this.pc = whereTo.location.pc-1;
 		this.currentLine = whereTo.location.fileIndex-1;
