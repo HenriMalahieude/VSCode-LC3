@@ -1,0 +1,3 @@
+[submodule "src/Simulator/SimSubmodule"]
+	path = src/Simulator/SimSubmodule
+	url = git@github.com:ucrcsedept/vscode-lc3-simulator.git
