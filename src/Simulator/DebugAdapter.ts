@@ -58,7 +58,6 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 	}
 
 	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request): void {
-		console.log(`disconnectRequest suspend: ${args.suspendDebuggee}, terminate: ${args.terminateDebuggee}`);
 		this._debugger = undefined;
 		
 		this.sendResponse(response);
@@ -131,7 +130,7 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 		this.sendResponse(response);
 	}
 
-	protected async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): Promise<void> {
+	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
 		if (this._debugger == undefined) return;
 
 		if (args.breakpoints != undefined){
@@ -202,7 +201,7 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 		this.sendResponse(response);
 	}
 
-	protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request): Promise<void> {
+	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request): void {
 		if (this._debugger){
 			if (request && request.arguments) {	
 				if (request.arguments.variablesReference == 1){
