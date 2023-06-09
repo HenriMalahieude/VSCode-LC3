@@ -18,7 +18,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 
 	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request): void {}
 
-	protected async attachRequest(response: DebugProtocol.AttachResponse, args: ILaunchRequestArguments) {}
+	protected attachRequest(response: DebugProtocol.AttachResponse, args: ILaunchRequestArguments) {}
 
 	protected launchRequest(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {}
 

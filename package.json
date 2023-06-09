@@ -42,15 +42,15 @@
 			"debug/variables/context": [
 				{
 					"command":"ucr-lc3.debug.toggleFormatting",
-					"when": "debugType == 'lcsim'"
+					"when": "debugType == 'lc3sim'"
 				}
 			]
 		},
 		"debuggers": [
 			{
-				"type": "lcsim",
+				"type": "lc3sim",
 				"label": "LC3 Simulator",
-				"program": "./out/DebugAdapter.js",
+				"program": "./out/Simulator/DebugAdapter.js",
 				"runtime": "node",
 				"configurationAttributes": {
 					"launch": {
@@ -66,7 +66,7 @@
 				},
 				"initialConfigurations": [
 					{
-						"type": "lcsim",
+						"type": "lc3sim",
 						"request": "launch",
 						"name": "LC3 Simulator",
 						"program": "${workspaceFolder}/${command:AskForProgramName}"
@@ -74,6 +74,35 @@
 				],
 				"variables": {
 					"AskForProgramName": "ucr-lc3.debug.getProgramNameInference"
+				}
+			},
+			{
+				"type": "lc3grader",
+				"label": "LC3 Grader",
+				"program": "./out/Grader/DebugAdapter.js",
+				"runtime": "node",
+				"configurationAttributes": {
+					"launch": {
+						"required": ["program"],
+						"properties": {
+							"program": {
+								"type": "string",
+								"description": "Absolute path to a text file, defaults to asking you.",
+								"default": "${workspaceFolder}/${command:AskForProgramName}"
+							}
+						}
+					}
+				},
+				"initialConfigurations": [
+					{
+						"type": "lc3grader",
+						"request": "launch",
+						"name": "LC3 Grader",
+						"program": "${workspaceFolder}/${command:AskForProgramName}"
+					}
+				],
+				"variables": {
+					"AskForProgramName": "ucr-lc3.debug.getProgramName"
 				}
 			}
 		],

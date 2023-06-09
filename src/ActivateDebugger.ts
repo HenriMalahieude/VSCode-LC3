@@ -4,8 +4,8 @@ import {InlineAdapterFactory} from './DebugFactory';
 
 //This took me way too long to figure out how to get it to work
 export function activateDebugging(ctx: vscode.ExtensionContext, otc: vscode.OutputChannel){
-	//Activate the debugger to run inside of vscode
-	ctx.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('lcsim', new InlineAdapterFactory(ctx, otc)));
+	//Activate the debugger to run inside of vscode, basically give VSCode a method of spawning the debugger
+	ctx.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('lc3sim', new InlineAdapterFactory(ctx, otc)));
 
 	vscode.commands.registerCommand('ucr-lc3.debug.getProgramName', config => {
 		return vscode.window.showInputBox({
@@ -37,15 +37,15 @@ export function activateDebugging(ctx: vscode.ExtensionContext, otc: vscode.Outp
 	});
 
 	const provider = new ConfigurationProvider();
-	ctx.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('lcsim', provider));
+	ctx.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('lc3sim', provider));
 
-	ctx.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('lcsim', {
+	ctx.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('lc3sim', {
 		provideDebugConfigurations(folder: vscode.WorkspaceFolder | undefined): vscode.ProviderResult<vscode.DebugConfiguration[]> {
 			return [
 				{
 					name: "LC3 Simulator (Dynamic)",
 					request: "launch",
-					type: "lcsim",
+					type: "lc3sim",
 					program: "${workspaceFolder}/${command:ucr-lc3.debug.getProgramNameInference}"
 				},
 			];
@@ -64,7 +64,7 @@ class ConfigurationProvider implements vscode.DebugConfigurationProvider {
 		if (!config.type && !config.request && !config.name) {
 			const editor = vscode.window.activeTextEditor;
 			if (editor && editor.document.languageId === 'LC3') {
-				config.type = 'lcsim';
+				config.type = 'lc3sim';
 				config.name = 'LC3 Simulator (Dynamic)';
 				config.request = 'launch';
 				config.program = '${workspaceFolder}/${command:ucr-lc3.debug.getProgramName}';
