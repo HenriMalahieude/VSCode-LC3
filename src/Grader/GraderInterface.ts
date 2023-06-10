@@ -1,27 +1,20 @@
+import { EventEmitter } from 'stream';
 import * as cp from 'child_process';
 import {promisify} from 'util';
 import * as vscode from 'vscode';
 import {platform} from "process";
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const execFile = promisify(cp.execFile);
 
-/*let proc = cp.spawn('python', ['-i']);
-proc.stdout.setEncoding('utf-8');
+const EVENT_NEWLINE = "DataNewLine";
 
-let dataChars = '';
-proc.stdout.on("data", (data) =>{
-	dataChars += data;
-	if (dataChars[dataChars.length - 1] == "\n"){
-		console.log("Full Line: " + dataChars);
-		proc.stdin.end();
-	}
-})
+export interface Optional<T>{
+	value?: T;
+	message?: string;
+}
 
-proc.stdin.write("1 + 0\n");
-
-setTimeout(() => {}, 1500); *///This is temporary while I figure out async functions
-
-export class CLIInterface {
+export class CLIInterface extends EventEmitter {
 	outputChannel: vscode.OutputChannel;
 
 	private CLI_path: vscode.Uri;
@@ -30,6 +23,7 @@ export class CLIInterface {
 	private debugger: cp.ChildProcessWithoutNullStreams | undefined = undefined;
 	
 	constructor(ctx: vscode.ExtensionContext, otc: vscode.OutputChannel){
+		super();
 		this.outputChannel = otc;
 
 		let isWindows = platform === "win32"
@@ -37,18 +31,18 @@ export class CLIInterface {
 
 		this.CLI_path = ctx.extensionUri;
 		if (isWindows){
-			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Windows");
+			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Windows/");
 		}else if (isMac){
-			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Mac");
+			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Mac/");
 		}else{ //Must be linux then...
-			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Linux");
+			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Linux/");
 		}
 
 		//NOTE: May need to detect architecture specifically
 	}
 
 	public async Compile(file: vscode.TextDocument): Promise<boolean> {
-		let compiler_uri: vscode.Uri = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe") //This will be windows specific unless..... we remove file extensions?
+		let compiler_uri: vscode.Uri = vscode.Uri.joinPath(this.CLI_path, "./assembler")
 		
 		try {
 			const {stdout, stderr} = await execFile(compiler_uri.fsPath, ["---print-level=5", compiler_uri.fsPath])
@@ -83,12 +77,16 @@ export class CLIInterface {
 		}
 	}
 
-	public LaunchDebuggerCLI(file: vscode.TextDocument): boolean{
-		let debugger_uri = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
+	public async LaunchDebuggerCLI(file: vscode.TextDocument): Promise<boolean>{
+		if (this.debugger) return false;
+
+		let debugger_uri = vscode.Uri.joinPath(this.CLI_path, "./simulator");
 		let objFile = file.fileName.substring(0, file.fileName.lastIndexOf(".")) + ".obj";
 
+		this.cli_buffer = "";
+
 		try{
-			this.debugger = cp.spawn(debugger_uri.fsPath, ["--print-level=8", objFile]);
+			this.debugger = cp.spawn(debugger_uri.fsPath, ["--print-level=6", objFile]);
 		}catch (e){
 			console.log(e);
 			return false;
@@ -96,10 +94,12 @@ export class CLIInterface {
 		
 		this.debugger.stdout.setEncoding('utf-8');
 
-		this.cli_buffer = "";
-
 		this.debugger.stdout.on("data", (data) =>{
 			this.cli_buffer += data;
+			if (this.cli_buffer.endsWith("\n")){
+				this.emit(EVENT_NEWLINE);
+				console.log(this.cli_buffer);
+			}
 		})
 
 		this.debugger.stderr.on("data", (data) => {
@@ -109,6 +109,15 @@ export class CLIInterface {
 		this.debugger.addListener('error', (err: Error) => {
 			console.log("Simulator Error: " + err.message);
 		});
+
+		//Remove the entrance message (the help message)
+		while(this.CountSentinelInBuffer("\n") < 16){
+			await sleep(50);
+		}
+
+		this.cli_buffer = ""; //We're are just clearing the stdout buffer
+
+		this.debugger.stdin.write("randomize\n"); //To enforce a "grader" like appearance
 
 		return true;
 	}
@@ -120,5 +129,49 @@ export class CLIInterface {
 		this.debugger.stdin.end();
 		//this.debugger.kill();
 		this.debugger = undefined;
+	}
+
+	public async GetRegisters(): Promise<Optional<number[]>> {
+		if (this.debugger == null) return {message: "Debugger not running?"};
+
+		this.cli_buffer = "";
+
+		this.debugger.stdin.write("regs\n");
+
+		let registers: number[] = [];
+
+		while (this.CountSentinelInBuffer("\n") < 2) {await sleep(50)} 
+		this.SkipWhitespace();
+		//Get the rest...
+
+
+		return {value: registers};
+	}
+
+	private SkipWhitespace(){
+		if (this.cli_buffer.length <= 0 || this.cli_buffer.search(/\s/gm) != 0) return;
+
+		this.cli_buffer = this.cli_buffer.substring(1);
+
+		this.SkipWhitespace();
+	}
+
+	private CountSentinelInBuffer(sentinel: string): number{
+		let count = 0;
+
+		let tempValue: string = this.cli_buffer.substring(0) //I just want to make sure that the string is a copy...
+
+		while(tempValue.length > 0){
+			let ii = tempValue.indexOf(sentinel);
+			if (ii < 0){
+				break;
+			}
+			
+			tempValue = tempValue.substring(ii+1);
+			count++;
+		}
+		
+
+		return count;
 	}
 }
