@@ -1,8 +1,8 @@
 out
-dist
 node_modules
 .vscode-test/
 *.vsix
 package-lock.json
 _old/
 test/.vscode
+*.obj
