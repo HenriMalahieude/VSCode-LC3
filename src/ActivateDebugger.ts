@@ -1,11 +1,12 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import {InlineAdapterFactory} from './DebugFactory';
+import {GraderAdapterFactory, InlineAdapterFactory} from './DebugFactory';
 
 //This took me way too long to figure out how to get it to work
 export function activateDebugging(ctx: vscode.ExtensionContext, otc: vscode.OutputChannel){
 	//Activate the debugger to run inside of vscode, basically give VSCode a method of spawning the debugger
 	ctx.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('lc3sim', new InlineAdapterFactory(ctx, otc)));
+	ctx.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('lc3grader', new GraderAdapterFactory(ctx, otc)));
 
 	vscode.commands.registerCommand('ucr-lc3.debug.getProgramName', config => {
 		return vscode.window.showInputBox({
