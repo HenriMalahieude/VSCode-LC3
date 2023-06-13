@@ -42,10 +42,10 @@ export class CLIInterface extends EventEmitter {
 	}
 
 	public async Compile(file: vscode.TextDocument): Promise<boolean> {
-		let compiler_uri: vscode.Uri = vscode.Uri.joinPath(this.CLI_path, "./assembler")
+		let compiler_uri: vscode.Uri = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe")
 		
 		try {
-			const {stdout, stderr} = await execFile(compiler_uri.fsPath, ["---print-level=5", compiler_uri.fsPath])
+			const {stdout, stderr} = await execFile(compiler_uri.fsPath, ["--print-level=5", file.uri.fsPath])
 
 			if (stderr){
 				console.log("Compile Std Err: " + stderr);
@@ -67,11 +67,12 @@ export class CLIInterface extends EventEmitter {
 
 			return true;
 		}catch (e){
-			console.log("Error: " + e);
+			console.log(e);
 
 			this.outputChannel.clear();
 			this.outputChannel.show();
 
+			this.outputChannel.appendLine("" + e);
 			this.outputChannel.appendLine("Error with compiling function: E1001");
 			return false;
 		}
@@ -80,7 +81,7 @@ export class CLIInterface extends EventEmitter {
 	public async LaunchDebuggerCLI(file: vscode.TextDocument): Promise<boolean>{
 		if (this.debugger) return false;
 
-		let debugger_uri = vscode.Uri.joinPath(this.CLI_path, "./simulator");
+		let debugger_uri = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
 		let objFile = file.fileName.substring(0, file.fileName.lastIndexOf(".")) + ".obj";
 
 		this.cli_buffer = "";
@@ -115,8 +116,6 @@ export class CLIInterface extends EventEmitter {
 			await sleep(50);
 		}
 
-		console.log(this.cli_buffer);
-
 		this.debugger.stdin.write("randomize\n"); //To enforce a "grader" like appearance
 
 		this.cli_buffer = ""; //We're are just clearing the stdout buffer
@@ -136,6 +135,7 @@ export class CLIInterface extends EventEmitter {
 	public async GetRegisters(): Promise<Optional<number[]>> {
 		if (this.debugger == null) return {message: "Debugger not running?"};
 		/*
+		> regs
 		R0: 0x0000 (    0)    R1: 0x0000 (    0)    R2: 0x0000 (    0)    R3: 0x0000 (    0)
 		R4: 0x0000 (    0)    R5: 0x0000 (    0)    R6: 0x0000 (    0)    R7: 0x0000 (    0)
 		PC: 0x3000
@@ -143,6 +143,7 @@ export class CLIInterface extends EventEmitter {
 		CC: ☻
 		MCR: 0x0000
 		Executed 0 instructions
+		>
 		*/
 
 		this.cli_buffer = "";
@@ -174,9 +175,8 @@ export class CLIInterface extends EventEmitter {
 		return {value: registers};
 	}
 
-	public async GetMemoryRange(start: number, amount:number = 1): Promise<Optional<string[]>> {
+	public async GetMemoryRange(start: number, amount:number = 1): Promise<Optional<Map<number, string>>> {
 		if (this.debugger == null) return {message: "Debugger not running?"};
-
 		/* 
 			> mem 0x3000 0x300F
 			0x3000: 0x5DA0 AND R6, R6, #0
@@ -189,9 +189,9 @@ export class CLIInterface extends EventEmitter {
 			>
 		*/
 
-		let memory_range: string[] = [];
+		let memory_range: Map<number, string> = new Map;
 
-		this.cli_buffer = ""
+		this.cli_buffer = "";
 
 		if (amount > 1){
 			this.debugger.stdin.write("mem " + start.toString(16) + " " + (start + amount).toString(16) + "\n");
@@ -208,7 +208,7 @@ export class CLIInterface extends EventEmitter {
 			if (Number.isNaN(addr)){
 				return {message: "Memory get " + i.toString() + " failed?"}
 			}
-			memory_range[addr] = this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1);
+			memory_range.set(addr, this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1));
 
 			this.cli_buffer.substring(this.cli_buffer.indexOf("\n") + 1);
 		}
