@@ -42,7 +42,7 @@
 			"debug/variables/context": [
 				{
 					"command":"ucr-lc3.debug.toggleFormatting",
-					"when": "debugType == 'lc3sim'"
+					"when": "debugType == 'lc3sim' || debugType == 'lc3grader'"
 				}
 			]
 		},
