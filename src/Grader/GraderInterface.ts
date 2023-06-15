@@ -18,7 +18,13 @@ export class CLIInterface extends EventEmitter {
 	private outputChannel: vscode.OutputChannel;
 
 	private CLI_path: vscode.Uri;
+	private CLI_compiler: vscode.Uri;
+	private CLI_simulator: vscode.Uri;
+
 	private cli_buffer: string = "";
+	
+	private register_cache: number[] = [];
+	private update_register_cache: boolean = true; //We want to reduce CLI spam
 
 	private debugger: cp.ChildProcessWithoutNullStreams | undefined = undefined;
 	
@@ -32,20 +38,26 @@ export class CLIInterface extends EventEmitter {
 		this.CLI_path = ctx.extensionUri;
 		if (isWindows){
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Windows/");
+			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
+			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
 		}else if (isMac){
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Mac/");
+			//Stand Ins while we don't have them
+			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
+			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
 		}else{ //Must be linux then...
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Linux/");
+			//Stand Ins while we don't have them
+			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
+			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
 		}
 
 		//NOTE: May need to detect architecture specifically
 	}
 
 	public async Compile(file: vscode.TextDocument): Promise<boolean> {
-		let compiler_uri: vscode.Uri = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe")
-		
 		try {
-			const {stdout, stderr} = await execFile(compiler_uri.fsPath, ["--print-level=5", file.uri.fsPath])
+			const {stdout, stderr} = await execFile(this.CLI_compiler.fsPath, ["--print-level=5", file.uri.fsPath])
 
 			if (stderr){
 				console.log("Compile Std Err: " + stderr);
@@ -85,13 +97,12 @@ export class CLIInterface extends EventEmitter {
 	public async LaunchDebuggerCLI(file: vscode.TextDocument): Promise<boolean>{
 		if (this.debugger) return false;
 
-		let debugger_uri = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
 		let objFile = file.fileName.substring(0, file.fileName.lastIndexOf(".")) + ".obj";
 
 		this.cli_buffer = "";
 
 		try{
-			this.debugger = cp.spawn(debugger_uri.fsPath, ["--print-level=6", objFile]);
+			this.debugger = cp.spawn(this.CLI_simulator.fsPath, ["--print-level=6", objFile]);
 		}catch (e){
 			console.log(e);
 			return false;
@@ -138,6 +149,10 @@ export class CLIInterface extends EventEmitter {
 	}
 
 	public async GetRegisters(): Promise<Optional<number[]>> {
+		if (!this.update_register_cache){
+			return {value: this.register_cache};
+		}
+		
 		await this.WaitForCLIClear();
 		if (this.debugger == null) return {message: "Debugger not running?"};
 		/*
@@ -156,7 +171,7 @@ export class CLIInterface extends EventEmitter {
 
 		let registers: number[] = [];
 
-		while (this.CountSentinelInBuffer("\n") < 5) {await sleep(50)}
+		while (this.CountSentinelInBuffer("\n") < 7) {await sleep(50)}
 		
 		for (let i = 0; i < 8; i++){
 			let registerTerm = "R" + i.toString() + ": "; // "R0: "
@@ -175,6 +190,9 @@ export class CLIInterface extends EventEmitter {
 		registers[10] = Number(this.cli_buffer.substring(mcr_start, mcr_start+6));
 
 		this.cli_buffer = "";
+		
+		this.register_cache = registers;
+		this.update_register_cache = false;
 
 		return {value: registers};
 	}
@@ -197,13 +215,14 @@ export class CLIInterface extends EventEmitter {
 		let memory_range: Map<number, string> = new Map;
 
 		if (amount > 1){
-			let i = "mem 0x" + start.toString(16) + " 0x" + (start + amount).toString(16) + "\n"
+			let i = "mem 0x" + start.toString(16) + " 0x" + (start + amount - 1).toString(16) + "\n"
 			this.debugger.stdin.write(i);
 		}else{
 			this.debugger.stdin.write("mem 0x" + start.toString(16) + "\n");
 		}
 
 		while(this.CountSentinelInBuffer("\n") < amount) {await sleep(50)};
+		console.log(this.cli_buffer)
 
 		for (let i = 0; i < amount; i++){
 			if (this.cli_buffer == "" && i < amount) return {message: "Reached end of stdin, but we asked for more memory?"};
@@ -213,7 +232,7 @@ export class CLIInterface extends EventEmitter {
 			if (Number.isNaN(addr)){
 				return {message: "Memory get " + i.toString() + " failed?"}
 			}
-			memory_range.set(addr, this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1));
+			memory_range.set(addr, this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1, this.cli_buffer.indexOf("\n")));
 
 			this.cli_buffer = this.cli_buffer.substring(this.cli_buffer.indexOf("\n") + 1);
 		}
@@ -245,6 +264,26 @@ export class CLIInterface extends EventEmitter {
 		return {value: stack};
 	}
 
+	public async SetRegisters(register_index: number, value: number): Promise<boolean> {
+		await this.WaitForCLIClear();
+		if (this.debugger == undefined || Number.isNaN(value) || Number.isNaN(register_index)) return false;
+
+		let stringed: string = "";
+		if (register_index <= 7){
+			stringed = "R" + register_index.toString();
+		}else{
+			return false; //Though this functionality could be expanded later
+		}
+
+		this.debugger.stdin.write("set " + stringed + " 0x" + value.toString(16) + "\n");
+
+		while(this.CountSentinelInBuffer("\n") < 1) {await sleep(50)}
+
+		this.update_register_cache = true;
+		this.cli_buffer = "";
+		return true;
+	}
+
 	//Helper Function
 	private SkipWhitespace(){
 		if (this.cli_buffer.length <= 0 || this.cli_buffer.search(/\s/gm) != 0) return;
@@ -256,7 +295,6 @@ export class CLIInterface extends EventEmitter {
 
 	private async WaitForCLIClear(){
 		while(this.cli_buffer != "") {
-			console.log("Waiting")
 			await sleep(25)
 		}
 	}
