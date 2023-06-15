@@ -60,9 +60,13 @@ export class CLIInterface extends EventEmitter {
 
 			if (stdout){
 				this.outputChannel.clear();
-				//this.outputChannel.show();
-
 				this.outputChannel.appendLine(stdout);
+
+				if (stdout.indexOf("assembly successful") == -1){
+					this.outputChannel.show();
+
+					return false;
+				}
 			}
 
 			return true;
@@ -111,14 +115,14 @@ export class CLIInterface extends EventEmitter {
 			console.log("Simulator Error: " + err.message);
 		});
 
+		this.debugger.stdin.write("randomize\n"); //To enforce a "grader" like appearance
+		
 		//Remove the entrance message (the help message)
-		while(this.CountSentinelInBuffer("\n") < 16){
+		while(this.CountSentinelInBuffer("\n") < 17){
 			await sleep(50);
 		}
 
-		this.debugger.stdin.write("randomize\n"); //To enforce a "grader" like appearance
-
-		this.cli_buffer = ""; //We're are just clearing the stdout buffer
+		this.cli_buffer = "";
 
 		return true;
 	}
@@ -130,9 +134,11 @@ export class CLIInterface extends EventEmitter {
 		this.debugger.stdin.end("quit\n");
 		//this.debugger.kill();
 		this.debugger = undefined;
+		this.cli_buffer = "";
 	}
 
 	public async GetRegisters(): Promise<Optional<number[]>> {
+		await this.WaitForCLIClear();
 		if (this.debugger == null) return {message: "Debugger not running?"};
 		/*
 		> regs
@@ -146,36 +152,35 @@ export class CLIInterface extends EventEmitter {
 		>
 		*/
 
-		this.cli_buffer = "";
-
 		this.debugger.stdin.write("regs\n");
 
 		let registers: number[] = [];
 
-		while (this.CountSentinelInBuffer("\n") < 2) {await sleep(50)}
-		console.log(this.cli_buffer);
+		while (this.CountSentinelInBuffer("\n") < 5) {await sleep(50)}
 		
 		for (let i = 0; i < 8; i++){
 			let registerTerm = "R" + i.toString() + ": "; // "R0: "
-			let start = this.cli_buffer.indexOf(registerTerm) + registerTerm.length + 1; //Where the data starts
+			let start = this.cli_buffer.indexOf(registerTerm) + registerTerm.length; //Where the data starts
 			let value = this.cli_buffer.substring(start, start+6);
-			console.log(value);
 			registers[i] = Number(value);
 		}
 		
-		let pc_start = this.cli_buffer.indexOf("PC: ") + "PC: ".length + 1;
+		let pc_start = this.cli_buffer.indexOf("PC: ") + "PC: ".length;
 		registers[8] = Number(this.cli_buffer.substring(pc_start, pc_start+6));
 
-		let psr_start = this.cli_buffer.indexOf("PSR: ") + "PSR: ".length + 1;
+		let psr_start = this.cli_buffer.indexOf("PSR: ") + "PSR: ".length;
 		registers[9] = Number(this.cli_buffer.substring(psr_start, psr_start+6));
 
-		let mcr_start = this.cli_buffer.indexOf("MSR: ") + "MCR: ".length + 1;
+		let mcr_start = this.cli_buffer.indexOf("MSR: ") + "MCR: ".length;
 		registers[10] = Number(this.cli_buffer.substring(mcr_start, mcr_start+6));
+
+		this.cli_buffer = "";
 
 		return {value: registers};
 	}
 
 	public async GetMemoryRange(start: number, amount:number = 1): Promise<Optional<Map<number, string>>> {
+		await this.WaitForCLIClear();
 		if (this.debugger == null) return {message: "Debugger not running?"};
 		/* 
 			> mem 0x3000 0x300F
@@ -191,16 +196,16 @@ export class CLIInterface extends EventEmitter {
 
 		let memory_range: Map<number, string> = new Map;
 
-		this.cli_buffer = "";
-
 		if (amount > 1){
-			this.debugger.stdin.write("mem " + start.toString(16) + " " + (start + amount).toString(16) + "\n");
+			let i = "mem 0x" + start.toString(16) + " 0x" + (start + amount).toString(16) + "\n"
+			this.debugger.stdin.write(i);
 		}else{
-			this.debugger.stdin.write("mem " + start.toString(16) + "\n");
+			this.debugger.stdin.write("mem 0x" + start.toString(16) + "\n");
 		}
-		
-		while(this.CountSentinelInBuffer("\n") < (amount-2)) {await sleep(50)};
-		for (let i = 0; i < amount; i--){
+
+		while(this.CountSentinelInBuffer("\n") < amount) {await sleep(50)};
+
+		for (let i = 0; i < amount; i++){
 			if (this.cli_buffer == "" && i < amount) return {message: "Reached end of stdin, but we asked for more memory?"};
 
 			this.SkipWhitespace();
@@ -210,10 +215,34 @@ export class CLIInterface extends EventEmitter {
 			}
 			memory_range.set(addr, this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1));
 
-			this.cli_buffer.substring(this.cli_buffer.indexOf("\n") + 1);
+			this.cli_buffer = this.cli_buffer.substring(this.cli_buffer.indexOf("\n") + 1);
 		}
 
+		this.cli_buffer = "";
+
 		return {value: memory_range};
+	}
+
+	public async StackTraceRequest(): Promise<Optional<string[]>> {
+		const amount = 5;
+		if (this.debugger == undefined) return {message: "Debugger not running?"};
+		
+		let stack: string[] = [];
+
+		let registers = await this.GetRegisters();
+		if (registers.message != undefined || registers.value == undefined) return {message: registers.message};
+
+		let pc_value = registers.value[8];
+		pc_value -= Math.floor(amount / 2);
+
+		let memory_range = await this.GetMemoryRange(pc_value, 5);
+		if (memory_range.value == undefined || memory_range.message != undefined) return {message: memory_range.message};
+
+		for (let i = 0; i < amount; i++){
+			stack[i] = "0x" + (pc_value + i).toString(16) + ": " + memory_range.value.get(pc_value+i);
+		}
+
+		return {value: stack};
 	}
 
 	//Helper Function
@@ -223,6 +252,13 @@ export class CLIInterface extends EventEmitter {
 		this.cli_buffer = this.cli_buffer.substring(1);
 
 		this.SkipWhitespace();
+	}
+
+	private async WaitForCLIClear(){
+		while(this.cli_buffer != "") {
+			console.log("Waiting")
+			await sleep(25)
+		}
 	}
 
 	private CountSentinelInBuffer(sentinel: string): number{

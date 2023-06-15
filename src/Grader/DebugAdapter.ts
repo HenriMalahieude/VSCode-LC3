@@ -53,15 +53,19 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
 		try {
 			let td: vscode.TextDocument = await vscode.workspace.openTextDocument(pathToUri(args.program));
+			vscode.window.showTextDocument(td); //Focus this Text Document
 
 			let compilationSuccess = await this.grader.Compile(td);
 
 			if (compilationSuccess){
 				let succ: boolean = await this.grader.LaunchDebuggerCLI(td);
 
-				if (!succ) console.log("Could not launch the CLI?")
+				if (!succ) return this.graderError(response, "Could not launch the CLI?");
 
+				
 				this.sendEvent(new DAP.StoppedEvent("launch", 1))
+			}else{
+				this.graderError(response, "Could not compile?");
 			}
 		}catch (e){
 			console.log(e)
@@ -69,13 +73,31 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		}
 	}
 
-	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {}//TODO
+	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {} //TODO
 	
-	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments | undefined) {
-		//TODO
+	//NOTE: This is required to be able to test...
+	protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments | undefined) {
+		let promise_stack = await this.grader.StackTraceRequest();
+		if (promise_stack.value == undefined || promise_stack.message != undefined) {
+			this.graderError(response, (promise_stack.message) ? promise_stack.message : "Default Launch Error?");
+		}
+
+		let stack = (promise_stack.value) ? promise_stack.value : ["Error Getting Stack Trace"];
+
+		response.body = {
+			stackFrames: []
+		}
+
+		for (let i = 0; i < stack.length; i++){
+			response.body.stackFrames.push({id: i, name: stack[i], line: 0, column: 0, presentationHint: 'subtle'});
+		}
+
+		response.body.totalFrames = stack.length;
+
+		this.sendResponse(response);
 	}
 
-	protected cancelRequest(response: DebugProtocol.CancelResponse, args: DebugProtocol.CancelArguments | undefined): void {}//TODO
+	protected cancelRequest(response: DebugProtocol.CancelResponse, args: DebugProtocol.CancelArguments | undefined): void {} //TODO
 
 	protected terminateRequest(response: DebugProtocol.TerminateResponse, args: DebugProtocol.TerminateArguments | undefined): void {
 		this.grader.CloseDebuggerCLI();
@@ -85,16 +107,16 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		// runtime supports no threads so just return a default thread.
 		response.body = {
 			threads: [
-				new DAP.Thread(1, "Next Instruction")
+				new DAP.Thread(1, "Location")
 			]
 		};
 
 		this.sendResponse(response);
 	}
 
-	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {}//TODO
+	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {} //TODO
 
-	protected setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments): void {}//TODO
+	protected async setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments) {} //TODO
 
 	protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments | undefined) {
 		response.body = {
@@ -107,13 +129,13 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		this.sendResponse(response);
 	}
 
-	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {} //TODO
+	protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {} //TODO
 
-	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {}//TODO
+	protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {} //TODO
 
-	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {}//TODO
+	protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {} //TODO
 
-	protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments | undefined): void {}//TODO
+	protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments | undefined) {} //TODO
 
 	protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
 		if (command == 'toggleFormatting') {
@@ -122,5 +144,14 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		} else {
 			super.customRequest(command, response, args);
 		}
+	}
+
+	//Helper
+	private graderError(response: DebugProtocol.Response, message: string){
+		return this.sendErrorResponse(response, {
+			id: 1002,
+			format: message,
+			showUser: true
+		})
 	}
 }
