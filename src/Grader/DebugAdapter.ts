@@ -1,7 +1,8 @@
 import { DebugProtocol } from "@vscode/debugprotocol/lib/debugProtocol";
 import * as DAP from "@vscode/debugadapter";
 import * as vscode from 'vscode';
-import {Optional, CLIInterface} from './GraderInterface'
+import {CLIInterface} from './GraderInterface'
+import {startsWithCommand} from "../Simulator/SimSubmodule/LC3Utils"
 
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 	/** An absolute path to the "program" to debug. */
@@ -356,8 +357,35 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		})
 	}
 
+	//Simply starts at source line, and counts upwards until .ORIG is hit or error
 	private GetSourceLineAddress(source_line: number): number {
-		//TODO
-		return 0;
+		if (this.file == undefined) return -1;
+
+		let txt = this.file.lineAt(source_line).text.trim().toLocaleUpperCase();
+		if (startsWithCommand(txt.split(" ")[0] + " ")) {
+			//Start counting up
+			let commandsAbove = 0;
+			let at = source_line;
+			while (at > 0){
+				at--;
+				let nTxt = this.file.lineAt(at).text.trimEnd().toLocaleLowerCase();
+				if (startsWithCommand(nTxt.split(" ")[0] + " ")){
+					commandsAbove++;
+					continue;
+				}
+
+				if (nTxt.startsWith(".END")) return -1;
+				if (nTxt.startsWith(".ORIG")) {
+					let nn = Number("0"+nTxt.split(" ")[1]) + commandsAbove;
+					if (!Number.isNaN(nn)){
+						return nn + commandsAbove;
+					}
+
+					return -1;
+				}
+			}
+		}
+
+		return -1;
 	}
 }
