@@ -126,10 +126,11 @@ export class CLIInterface extends EventEmitter {
 			console.log("Simulator Error: " + err.message);
 		});
 
-		this.debugger.stdin.write("randomize\n"); //To enforce a "grader" like appearance
+		//this.debugger.stdin.write("randomize\n"); //To enforce a "grader" like appearance
+		//However, note that the labels/command info will be wiped otherwise
 		
 		//Remove the entrance message (the help message)
-		while(this.CountSentinelInBuffer("\n") < 17){
+		while(this.CountSentinelInBuffer("\n") < 16){
 			await sleep(50);
 		}
 
@@ -198,6 +199,8 @@ export class CLIInterface extends EventEmitter {
 	}
 
 	public async GetMemoryRange(start: number, amount:number = 1): Promise<Optional<Map<number, string>>> {
+		if (start + amount > 0xFFFE || start < 0x0) return {message: "Memory Range out of Bounds"};
+
 		await this.WaitForCLIClear();
 		if (this.debugger == null) return {message: "Debugger not running?"};
 		/* 
@@ -221,8 +224,11 @@ export class CLIInterface extends EventEmitter {
 			this.debugger.stdin.write("mem 0x" + start.toString(16) + "\n");
 		}
 
-		while(this.CountSentinelInBuffer("\n") < amount) {await sleep(50)};
-		console.log(this.cli_buffer)
+		while(this.CountSentinelInBuffer("\n") < amount && this.cli_buffer.indexOf("invalid address") != -1) {await sleep(50)};
+		
+		if (this.cli_buffer.indexOf("invalid address") != -1){
+			return {message: "Memory Range Get: Invalid Address?"};
+		}
 
 		for (let i = 0; i < amount; i++){
 			if (this.cli_buffer == "" && i < amount) return {message: "Reached end of stdin, but we asked for more memory?"};
@@ -284,6 +290,87 @@ export class CLIInterface extends EventEmitter {
 		return true;
 	}
 
+	public async SetBreakpoint(location: number, addBreak: boolean): Promise<Optional<boolean>>{
+		if (location < 0x0 || location > 0xFFFE) return {value: false, message: "Break Point Location out of bounds"}
+
+		await this.WaitForCLIClear(); //Don't really need to do this, but best to keep the standard up
+		if (this.debugger == undefined) return {value: false, message: "Debugger not running?"};
+
+		let break_points = await this.GetBreakpoints();
+		if (break_points.message != undefined || break_points.value == undefined) return {value: false, message: break_points.message};
+		this.cli_buffer = "reserve this for now";
+
+		let bp_id_if_exists = -1;
+		for (let i = 0; i <= break_points.value.MaxId; i++){
+			let tem_vl = break_points.value.Points.get(i);
+			if (tem_vl != undefined){
+				if (tem_vl == location) {
+					bp_id_if_exists = i;
+				}
+			}
+		}
+
+		if (bp_id_if_exists != -1 && addBreak){
+			this.cli_buffer = "";
+			return {value: false, message: "Cannot add a breakpoint that already exists"};
+		}else if (bp_id_if_exists == -1 && !addBreak){
+			this.cli_buffer = "";
+			return {value: false, message: "Cannot remove a breakpoint that doesn't exist"};
+		}
+
+		this.debugger.stdin.write("break add 0x" + location.toString(16));
+
+		if (!this.cli_buffer.startsWith("Executed")) return {value: false, message: "Set BP failed:\n"+this.cli_buffer};
+
+		this.cli_buffer = "";
+		return {value: true};
+	}
+
+	//Returns locations of each breakpoint ([-1, 0x4000, 0x320F 0xFF02])
+	public async GetBreakpoints(): Promise<Optional<{Points: Map<number, number>, MaxId: number}>>{
+		await this.WaitForCLIClear();
+		if (this.debugger == undefined) return {message: "Debugger not running?"};
+
+		this.debugger.stdin.write("break list\n");
+		while (this.cli_buffer.indexOf("\nExecuted") == -1) {await sleep(50)} //Wait until it has listed everything
+		
+		let new_line_count = this.CountSentinelInBuffer("\n") - 1; //Remove the count for "Executed"
+		let break_points: Map<number, number> = new Map;
+		let m_id: number = 0;
+ 
+		if (new_line_count > 0){ //each new line represents a breakpoint
+			let temp: string = "" + this.cli_buffer; //Ensure copy
+			while (temp != ""){
+				if (temp.startsWith("Executed")) break;
+
+				if (!temp.startsWith("#")){
+					this.cli_buffer = ""
+					return {message: "GetBp: Invalid CLI response:\n"+temp};
+				}
+
+				let id = Number(temp.substring(1, 2)); 
+				if (Number.isNaN(id)) {
+					this.cli_buffer = ""
+					return {message: "GetBp: Invalid ID? (" + temp.substring(1, 2) + ")"};
+				}
+				
+				if (id > m_id) m_id = id;
+
+				let loc = Number(temp.substring(4, 10));
+				if (Number.isNaN(loc)){
+					this.cli_buffer = ""
+					return {message: "GetBp: Invalid Location? (" + temp.substring(4, 10) + ")"};
+				}
+
+				break_points.set(id, loc);
+				temp = temp.substring(temp.indexOf("\n") + 1);
+			}
+		}
+
+		this.cli_buffer = "";
+		return {value: {Points: break_points, MaxId: m_id}};
+	}
+
 	//Helper Function
 	private SkipWhitespace(){
 		if (this.cli_buffer.length <= 0 || this.cli_buffer.search(/\s/gm) != 0) return;
@@ -297,6 +384,15 @@ export class CLIInterface extends EventEmitter {
 		while(this.cli_buffer != "") {
 			await sleep(25)
 		}
+	}
+
+	private IsErrorInBuffer(): boolean {
+		if (this.cli_buffer.indexOf("--- Access violation---") != -1) return true;
+		if (this.cli_buffer.indexOf("--- Illegal opcode ---") != -1) return true;
+		if (this.cli_buffer.indexOf("--- Privilege violation ---") != -1) return true;
+		if (this.cli_buffer.indexOf("--- Undefined trap executed ---") != -1) return true;
+
+		return false;
 	}
 
 	private CountSentinelInBuffer(sentinel: string): number{
