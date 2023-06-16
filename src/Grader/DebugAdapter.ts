@@ -20,11 +20,14 @@ function pathToUri(path: string) {
 export class LC3GraderAdapter extends DAP.DebugSession {
 	private outputChannel: vscode.OutputChannel;
 	private grader: CLIInterface;
+	private file: vscode.TextDocument | undefined;
 
 	private valuesInHex: boolean = true;
 	private memoryCount: number = 16;
 
 	private memoryHead: number = -1;
+
+	private bp_cache: DebugProtocol.Breakpoint[] = [];
 
 	constructor(ctx: vscode.ExtensionContext, otc: vscode.OutputChannel){
 		super();
@@ -47,6 +50,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 
 	protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
 		this.grader.CloseDebuggerCLI();
+		this.file = undefined;
 	}
 
 	protected attachRequest(response: DebugProtocol.AttachResponse, args: ILaunchRequestArguments) {
@@ -57,6 +61,8 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		try {
 			let td: vscode.TextDocument = await vscode.workspace.openTextDocument(pathToUri(args.program));
 			vscode.window.showTextDocument(td); //Focus this Text Document
+
+			this.file = td;
 
 			let compilationSuccess = await this.grader.Compile(td);
 
@@ -72,11 +78,93 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 			}
 		}catch (e){
 			console.log(e)
+			this.file = undefined;
 			return;
 		}
 	}
 
-	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {} //TODO
+	//Note: Should we even support these? They have the simulator which will be much better for them
+	protected async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
+		if (this.file == undefined) return this.graderError(response, "Not debugging any file");
+
+		const locations = args.breakpoints;
+
+		response.body = {
+			breakpoints: []
+		}
+		
+		console.log(args, this.file?.uri.fsPath);
+
+		if (locations && args.source && args.source.path && args.source.path == this.file.uri.fsPath){
+
+			//Find and remove missing breakpoints in new "locations"
+			for (let i = 0; i < this.bp_cache.length; i++){
+				let remov = true;
+
+				//Compare to each element in "new" array
+				for (let j = 0; j < locations.length; j++){
+					if (this.bp_cache[i].line == locations[j].line){
+						remov = false;
+						break;
+					}
+				}
+
+				if (remov){
+					let bp = this.bp_cache[i]
+
+					if (bp.line){
+						let loc = this.GetSourceLineAddress(bp.line);
+
+						if (loc > 0x0){ //A valid Location we set beforehand
+							let remove_succ_p = await this.grader.SetBreakpoint(loc, false);
+							if (remove_succ_p.message != undefined || remove_succ_p.value == undefined || !remove_succ_p.value){
+								let mess = remove_succ_p.message ? remove_succ_p.message : "Remove BP Default Error?"; //NOTE: Perhaps not force the bp end?
+								return this.graderError(response, mess);
+							}
+						}
+					}
+
+					this.bp_cache.splice(i, 1);
+					i--; //we are removing an element, so we have to make sure we don't skip elements
+				}
+			}
+
+			//Find and add new breakpoints from list
+			for (let i = 0; i < locations.length; i++){
+				let n = true;
+				for (let j = 0; j < this.bp_cache.length; j++){
+					if (this.bp_cache[j].line == locations[i].line){
+						n = false;
+						break;
+					}
+				}
+
+				if (n){ //New, lets add it
+					let bp = locations[i]
+					
+					if (bp.line){
+						let loc = this.GetSourceLineAddress(bp.line);
+
+						if (loc > 0x0){
+							let add_succ_p = await this.grader.SetBreakpoint(loc, true);
+							if (add_succ_p.message != undefined || add_succ_p.value == undefined || !add_succ_p.value){
+								let mess = add_succ_p.message ? add_succ_p.message : "Adding BP Default Error?"
+								return this.graderError(response, mess);
+							}
+							this.bp_cache.push({verified: true, line: bp.line, id: bp.line, instructionReference: "0x" + loc.toString(16)});
+						}else{
+							this.bp_cache.push({verified: false, message: "Not a valid mem location", line: bp.line, id: bp.line});
+						}
+					}
+				}
+			}
+
+			response.body = {
+				breakpoints: this.bp_cache, //I hope this gets copied over, I'm a noob for this type of memory management in Typescript. Reference? Or Value? No Clue
+			}
+		}
+		return this.sendResponse(response);
+	}
 	
 	//NOTE: This is required to be able to test...
 	protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments | undefined) {
@@ -104,6 +192,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 
 	protected terminateRequest(response: DebugProtocol.TerminateResponse, args: DebugProtocol.TerminateArguments | undefined): void {
 		this.grader.CloseDebuggerCLI();
+		this.file = undefined;
 	}
 
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
@@ -262,5 +351,10 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 			format: message,
 			showUser: true
 		})
+	}
+
+	private GetSourceLineAddress(source_line: number): number {
+		//TODO
+		return 0;
 	}
 }
