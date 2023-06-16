@@ -224,7 +224,7 @@ export class CLIInterface extends EventEmitter {
 			this.debugger.stdin.write("mem 0x" + start.toString(16) + "\n");
 		}
 
-		while(this.CountSentinelInBuffer("\n") < amount && this.cli_buffer.indexOf("invalid address") != -1) {await sleep(50)};
+		while(this.CountSentinelInBuffer("\n") < amount && this.cli_buffer.indexOf("invalid address") == -1) {await sleep(50)};
 		
 		if (this.cli_buffer.indexOf("invalid address") != -1){
 			return {message: "Memory Range Get: Invalid Address?"};
@@ -238,13 +238,13 @@ export class CLIInterface extends EventEmitter {
 			if (Number.isNaN(addr)){
 				return {message: "Memory get " + i.toString() + " failed?"}
 			}
-			memory_range.set(addr, this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1, this.cli_buffer.indexOf("\n")));
+			memory_range.set(addr, this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1, this.cli_buffer.indexOf("\r")));
 
 			this.cli_buffer = this.cli_buffer.substring(this.cli_buffer.indexOf("\n") + 1);
 		}
 
 		this.cli_buffer = "";
-
+		
 		return {value: memory_range};
 	}
 
