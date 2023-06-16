@@ -298,7 +298,7 @@ export class CLIInterface extends EventEmitter {
 
 		let break_points = await this.GetBreakpoints();
 		if (break_points.message != undefined || break_points.value == undefined) return {value: false, message: break_points.message};
-		this.cli_buffer = "reserve this for now";
+		this.cli_buffer = "reserve this for now"; //Since other functions wait for the buffer to clear before starting
 
 		let bp_id_if_exists = -1;
 		for (let i = 0; i <= break_points.value.MaxId; i++){
@@ -318,9 +318,15 @@ export class CLIInterface extends EventEmitter {
 			return {value: false, message: "Cannot remove a breakpoint that doesn't exist"};
 		}
 
-		this.debugger.stdin.write("break add 0x" + location.toString(16));
+		if (addBreak){
+			this.debugger.stdin.write("break add 0x" + location.toString(16) + "\n");
+		}else {
+			this.debugger.stdin.write("break clear " + bp_id_if_exists + "\n");
+		}
 
-		if (!this.cli_buffer.startsWith("Executed")) return {value: false, message: "Set BP failed:\n"+this.cli_buffer};
+		while (this.cli_buffer.indexOf("\nExecuted") == -1) {await sleep(50)}
+
+		if (!this.cli_buffer.startsWith("Executed")) return {value: false, message: "Set BP failed:\n" + this.cli_buffer};
 
 		this.cli_buffer = "";
 		return {value: true};
