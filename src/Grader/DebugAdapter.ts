@@ -199,8 +199,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 			return this.graderError(response, "Editing Memory is not Supported in Grader Mode"); //Can be changed, but we want the students using the simulator
 		}else if (args.name == "Memory Start"){
 			let location = Number(args.value);
-			console.log(location)
-			if (!Number.isNaN(location)){
+			if (!Number.isNaN(location) && location >= 0x0 && location < 0xFFFF){
 				if (location > 0xFFFF || location < 0){
 					this.memoryHead = -1;
 
@@ -256,6 +255,8 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 	}
 
 	private graderError(response: DebugProtocol.Response, message: string){
+		console.log("Grader Error: " + message);
+
 		return this.sendErrorResponse(response, {
 			id: 1002,
 			format: message,
