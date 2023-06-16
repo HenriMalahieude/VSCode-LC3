@@ -346,6 +346,9 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 	private graderError(response: DebugProtocol.Response, message: string){
 		console.log("Grader Error: " + message);
 
+		this.grader.CloseDebuggerCLI();
+		this.file = undefined;
+
 		return this.sendErrorResponse(response, {
 			id: 1002,
 			format: message,
