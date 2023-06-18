@@ -4,12 +4,6 @@
 AND R6, R6, #0
 AND R0, R0, #0
 
-ADD R6, R6, #15
-ADD R0, R0, #-1
-
-LOOP ADD R6, R6, R0
-BRp LOOP
-
 AND R6, R6, #0
 LD R6, PTR2
 
