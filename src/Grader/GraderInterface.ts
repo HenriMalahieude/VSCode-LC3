@@ -33,20 +33,22 @@ export class CLIInterface extends EventEmitter {
 		this.outputChannel = otc;
 
 		let isWindows = platform === "win32"
-		let isMac = platform === "darwin"
+		let isMac = platform === "darwin" //I wish there was specific ARM or Intel platform detection
 
 		this.CLI_path = ctx.extensionUri;
 		if (isWindows){
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Windows/");
-			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
+			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe"); //Compiled on Windows 10, Intel Processor
 			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
 		}else if (isMac){
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Mac/");
+
 			//Stand Ins while we don't have them
 			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
 			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
 		}else{ //Must be linux then...
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Linux/");
+
 			//Stand Ins while we don't have them
 			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
 			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
@@ -141,6 +143,8 @@ export class CLIInterface extends EventEmitter {
 
 	public CloseDebuggerCLI(){
 		if (this.debugger == undefined) return;
+		this.outputChannel.appendLine("Closing the CLI Interface. . .");
+		this.outputChannel.show();
 
 		//NOTE: May want to tell the debugger to quit through the stdin instead of just sigterm-ing it
 		this.debugger.stdin.end("quit\n");
@@ -224,7 +228,7 @@ export class CLIInterface extends EventEmitter {
 			this.debugger.stdin.write("mem 0x" + start.toString(16) + "\n");
 		}
 
-		while(this.CountSentinelInBuffer("\n") < amount && this.cli_buffer.indexOf("invalid address") == -1) {await sleep(50)};
+		while(this.cli_buffer.indexOf("\nExecuted") == -1 && this.cli_buffer.indexOf("invalid address") == -1) {await sleep(50)};
 		
 		if (this.cli_buffer.indexOf("invalid address") != -1){
 			return {message: "Memory Range Get: Invalid Address?"};
@@ -236,6 +240,7 @@ export class CLIInterface extends EventEmitter {
 			this.SkipWhitespace();
 			let addr = Number(this.cli_buffer.substring(0, this.cli_buffer.indexOf(":")));
 			if (Number.isNaN(addr)){
+				console.log(this.cli_buffer)
 				return {message: "Memory get " + i.toString() + " failed?"}
 			}
 			memory_range.set(addr, this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1, this.cli_buffer.indexOf("\r")));
@@ -298,7 +303,7 @@ export class CLIInterface extends EventEmitter {
 
 		let break_points = await this.GetBreakpoints();
 		if (break_points.message != undefined || break_points.value == undefined) return {value: false, message: break_points.message};
-		this.cli_buffer = "reserve this for now"; //Since other functions wait for the buffer to clear before starting
+		this.cli_buffer = "reserve this for now\n"; //Since other functions wait for the buffer to clear before starting
 
 		let bp_id_if_exists = -1;
 		for (let i = 0; i <= break_points.value.MaxId; i++){
@@ -318,6 +323,7 @@ export class CLIInterface extends EventEmitter {
 			return {value: false, message: "Cannot remove a breakpoint that doesn't exist"};
 		}
 
+		this.cli_buffer = ""; //My only worry is that another command could get confused and think it's their turn
 		if (addBreak){
 			this.debugger.stdin.write("break add 0x" + location.toString(16) + "\n");
 		}else {
@@ -377,6 +383,38 @@ export class CLIInterface extends EventEmitter {
 		return {value: {Points: break_points, MaxId: m_id}};
 	}
 
+	public async StepInstruction(mode: "over" | "in" | "out"): Promise<Optional<string>>{
+		await this.WaitForCLIClear();
+		if (this.debugger == undefined) return {message: "Debugger not running?"};
+
+		this.debugger.stdin.write("step " + mode + "\n");
+		while (this.cli_buffer.indexOf("\nExecuted") == -1) {await sleep(50)} // Don't ask me why, I just randomly decided on 50ms standard
+		console.log(this.cli_buffer)
+
+		let std_output = "";
+
+		if (this.IsErrorInBuffer()){
+			this.cli_buffer = ""
+			return {message: "Error: " + this.GetErrorInBuffer()};
+		}
+
+		let stack_trace_start = this.cli_buffer.indexOf("    0x");
+		if (stack_trace_start == -1) {
+			//console.log(this.cli_buffer)
+			this.cli_buffer = ""
+			return {message: "CLI Error, no backtrace?"};
+		}
+
+		if (stack_trace_start > 0) {
+			std_output = this.cli_buffer.substring(0, stack_trace_start);
+		}
+
+		this.update_register_cache = true;
+
+		this.cli_buffer = "";
+		return {value: std_output};
+	}
+
 	//Helper Function
 	private SkipWhitespace(){
 		if (this.cli_buffer.length <= 0 || this.cli_buffer.search(/\s/gm) != 0) return;
@@ -393,12 +431,21 @@ export class CLIInterface extends EventEmitter {
 	}
 
 	private IsErrorInBuffer(): boolean {
-		if (this.cli_buffer.indexOf("--- Access violation---") != -1) return true;
+		if (this.cli_buffer.indexOf("--- Access violation---") != -1) return true; //LC3 Tools seems to have a typo and be missing a space
 		if (this.cli_buffer.indexOf("--- Illegal opcode ---") != -1) return true;
 		if (this.cli_buffer.indexOf("--- Privilege violation ---") != -1) return true;
 		if (this.cli_buffer.indexOf("--- Undefined trap executed ---") != -1) return true;
 
 		return false;
+	}
+
+	private GetErrorInBuffer(): string{
+		let err = ""
+
+		let start = this.cli_buffer.indexOf("\n\n---");
+		if (start != -1) err = this.cli_buffer.substring(start+5, this.cli_buffer.indexOf("---\n\n")); //Getting just the text within the \n\n--- "error" ---\n\n
+
+		return err;
 	}
 
 	private CountSentinelInBuffer(sentinel: string): number{

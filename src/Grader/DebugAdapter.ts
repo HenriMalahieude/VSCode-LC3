@@ -1,7 +1,7 @@
 import { DebugProtocol } from "@vscode/debugprotocol/lib/debugProtocol";
 import * as DAP from "@vscode/debugadapter";
 import * as vscode from 'vscode';
-import {CLIInterface} from './GraderInterface'
+import {Optional, CLIInterface} from './GraderInterface'
 import {startsWithCommand} from "../Simulator/SimSubmodule/LC3Utils"
 
 interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
@@ -17,7 +17,6 @@ function pathToUri(path: string) {
 	}
 }
 
-//TODO: All of the unfinished functions inside
 export class LC3GraderAdapter extends DAP.DebugSession {
 	private outputChannel: vscode.OutputChannel;
 	private grader: CLIInterface;
@@ -72,7 +71,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 
 				if (!succ) return this.graderError(response, "Could not launch the CLI?");
 
-				
+				this.outputChannel.appendLine("\n");
 				this.sendEvent(new DAP.StoppedEvent("launch", 1))
 			}else{
 				this.graderError(response, "Could not compile?");
@@ -189,7 +188,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		this.sendResponse(response);
 	}
 
-	protected cancelRequest(response: DebugProtocol.CancelResponse, args: DebugProtocol.CancelArguments | undefined) {}
+	protected cancelRequest(response: DebugProtocol.CancelResponse, args: DebugProtocol.CancelArguments | undefined) {this.sendResponse(response);}
 
 	protected terminateRequest(response: DebugProtocol.TerminateResponse, args: DebugProtocol.TerminateArguments | undefined): void {
 		this.grader.CloseDebuggerCLI();
@@ -219,7 +218,6 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 	}
 
 	protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
-		console.log("Update Variables " + args.variablesReference.toString())
 		let registers = await this.grader.GetRegisters();
 		if (registers.value == undefined || registers.message != undefined){
 			return this.graderError(response, registers.message ? registers.message : "Register Get Default Error?");
@@ -252,8 +250,6 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 				memoryTop = this.memoryHead;
 				start = "0x";
 			}
-
-			console.log(memoryTop)
 
 			response.body.variables.push({type: "string", name: "Memory Start", value: start + memoryTop.toString(16), variablesReference: 0});
 			
@@ -289,7 +285,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 			return this.graderError(response, "Editing Memory is not Supported in Grader Mode"); //Can be changed, but we want the students using the simulator
 		}else if (args.name == "Memory Start"){
 			let location = Number(args.value);
-			if (!Number.isNaN(location) && location >= 0x0 && location < 0xFFFF){
+			if (!Number.isNaN(location)){
 				if (location > 0xFFFF || location < 0){
 					this.memoryHead = -1;
 
@@ -314,13 +310,29 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		this.sendResponse(response);
 	}
 
-	protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {} //TODO
+	protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {
+		//TODO: Run
 
-	protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {} //TODO
+		this.sendResponse(response);
+	}
 
-	protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {} //TODO
+	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {
+		this.grader.StepInstruction("over").then((std_output) => {this.StepHelper(response, std_output)});
 
-	protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments | undefined) {} //TODO
+		this.sendResponse(response);
+	}
+
+	protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
+		this.grader.StepInstruction("in").then((std_output) => {this.StepHelper(response, std_output)});
+
+		this.sendResponse(response);
+	}
+
+	protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments | undefined) {
+		this.grader.StepInstruction("out").then((std_output) => {this.StepHelper(response, std_output)});
+
+		this.sendResponse(response);
+	}
 
 	protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
 		if (command == 'toggleFormatting') {
@@ -331,7 +343,19 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		}
 	}
 
-	//Helper
+	private StepHelper(response: DebugProtocol.Response, std_output: Optional<string>){
+		if (std_output.message != undefined){
+			response.success = false
+			return this.graderError(response, std_output.message)
+		}
+
+		if (std_output.value != ""){
+			this.outputChannel.append("");
+		}
+
+		this.sendEvent(new DAP.StoppedEvent("step", 1))
+	}
+
 	private formatNumber(x: number) {
 		if (this.valuesInHex){
 			let nn = x;
