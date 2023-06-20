@@ -31,8 +31,12 @@
 				"configuration": "./language-configuration.json"
 			}
 		],
-		"breakpoints": [{"language": "LC3"}],
-		"commands":[
+		"breakpoints": [
+			{
+				"language": "LC3"
+			}
+		],
+		"commands": [
 			{
 				"command": "ucr-lc3.debug.toggleFormatting",
 				"title": "Toggle between decimal and hex formatting"
@@ -41,7 +45,7 @@
 		"menus": {
 			"debug/variables/context": [
 				{
-					"command":"ucr-lc3.debug.toggleFormatting",
+					"command": "ucr-lc3.debug.toggleFormatting",
 					"when": "debugType == 'lc3sim' || debugType == 'lc3grader'"
 				}
 			]
@@ -54,7 +58,9 @@
 				"runtime": "node",
 				"configurationAttributes": {
 					"launch": {
-						"required": ["program"],
+						"required": [
+							"program"
+						],
 						"properties": {
 							"program": {
 								"type": "string",
@@ -83,7 +89,9 @@
 				"runtime": "node",
 				"configurationAttributes": {
 					"launch": {
-						"required": ["program"],
+						"required": [
+							"program"
+						],
 						"properties": {
 							"program": {
 								"type": "string",

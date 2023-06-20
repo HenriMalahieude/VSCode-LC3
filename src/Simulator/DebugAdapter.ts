@@ -90,7 +90,7 @@ export class LC3SimulatorAdapter extends DAP.DebugSession{
 				vscode.window.showInputBox({
 					title: 'LC3-Simulator Input Request',
 					placeHolder: '',//Hello, World!
-					prompt: 'Single char \'a\' or full string \'Hello, World!\'',
+					prompt: 'Single char \'a\' or full string \'Hello, World!\', Escape character (\\) not supported.',
 					value: '',
 					ignoreFocusOut: true,
 				}).then((item: string | undefined) => {

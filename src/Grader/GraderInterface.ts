@@ -4,6 +4,7 @@ import {promisify} from 'util';
 import * as vscode from 'vscode';
 import {platform} from "process";
 
+const STD_WAIT = 100; //in ms
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const execFile = promisify(cp.execFile);
 
@@ -25,6 +26,8 @@ export class CLIInterface extends EventEmitter {
 	
 	private register_cache: number[] = [];
 	private update_register_cache: boolean = true; //We want to reduce CLI spam
+
+	private buffer_in: string[] = ["a"];
 
 	private debugger: cp.ChildProcessWithoutNullStreams | undefined = undefined;
 	
@@ -55,6 +58,12 @@ export class CLIInterface extends EventEmitter {
 		}
 
 		//NOTE: May need to detect architecture specifically
+	}
+
+	public FillStdInBuffer(input: string){
+		for (let i = 0; i < input.length; i++){
+			this.buffer_in.push(input.charAt(i));
+		}
 	}
 
 	public async Compile(file: vscode.TextDocument): Promise<boolean> {
@@ -114,10 +123,6 @@ export class CLIInterface extends EventEmitter {
 
 		this.debugger.stdout.on("data", (data) =>{
 			this.cli_buffer += data;
-			if (this.cli_buffer.endsWith("\n")){
-				this.emit(EVENT_NEWLINE);
-				console.log(this.cli_buffer);
-			}
 		})
 
 		this.debugger.stderr.on("data", (data) => {
@@ -132,9 +137,7 @@ export class CLIInterface extends EventEmitter {
 		//However, note that the labels/command info will be wiped otherwise
 		
 		//Remove the entrance message (the help message)
-		while(this.CountSentinelInBuffer("\n") < 16){
-			await sleep(50);
-		}
+		while(this.CountSentinelInBuffer("\n") < 16){ await sleep(STD_WAIT); }
 
 		this.cli_buffer = "";
 
@@ -148,7 +151,7 @@ export class CLIInterface extends EventEmitter {
 
 		//NOTE: May want to tell the debugger to quit through the stdin instead of just sigterm-ing it
 		this.debugger.stdin.end("quit\n");
-		//this.debugger.kill();
+		this.debugger.kill();
 		this.debugger = undefined;
 		this.cli_buffer = "";
 	}
@@ -176,7 +179,7 @@ export class CLIInterface extends EventEmitter {
 
 		let registers: number[] = [];
 
-		while (this.CountSentinelInBuffer("\n") < 7) {await sleep(50)}
+		while (this.cli_buffer.indexOf("\nExecuted ") == -1) {await sleep(STD_WAIT)}
 		
 		for (let i = 0; i < 8; i++){
 			let registerTerm = "R" + i.toString() + ": "; // "R0: "
@@ -228,7 +231,7 @@ export class CLIInterface extends EventEmitter {
 			this.debugger.stdin.write("mem 0x" + start.toString(16) + "\n");
 		}
 
-		while(this.cli_buffer.indexOf("\nExecuted") == -1 && this.cli_buffer.indexOf("invalid address") == -1) {await sleep(50)};
+		while(this.cli_buffer.indexOf("\nExecuted") == -1 && this.cli_buffer.indexOf("invalid address") == -1) {await sleep(STD_WAIT)};
 		
 		if (this.cli_buffer.indexOf("invalid address") != -1){
 			return {message: "Memory Range Get: Invalid Address?"};
@@ -255,23 +258,23 @@ export class CLIInterface extends EventEmitter {
 
 	public async StackTraceRequest(): Promise<Optional<string[]>> {
 		const amount = 5;
+		await this.WaitForCLIClear();
 		if (this.debugger == undefined) return {message: "Debugger not running?"};
 		
 		let stack: string[] = [];
 
-		let registers = await this.GetRegisters();
-		if (registers.message != undefined || registers.value == undefined) return {message: registers.message};
+		this.debugger.stdin.write("list " + (Math.floor(5/2)).toString() + "\n");
 
-		let pc_value = registers.value[8];
-		pc_value -= Math.floor(amount / 2);
-
-		let memory_range = await this.GetMemoryRange(pc_value, 5);
-		if (memory_range.value == undefined || memory_range.message != undefined) return {message: memory_range.message};
+		while (this.cli_buffer.indexOf("\nExecuted ") == -1) await sleep(STD_WAIT);
 
 		for (let i = 0; i < amount; i++){
-			stack[i] = "0x" + (pc_value + i).toString(16) + ": " + memory_range.value.get(pc_value+i);
+			if (this.cli_buffer == "" && i < amount) return {message: "ST context get " + i + " failed?"};
+			stack[i] = this.cli_buffer.substring(0, this.cli_buffer.indexOf("\n"))
+
+			this.cli_buffer = this.cli_buffer.substring(this.cli_buffer.indexOf("\n") + 1)
 		}
 
+		this.cli_buffer = "";
 		return {value: stack};
 	}
 
@@ -288,7 +291,7 @@ export class CLIInterface extends EventEmitter {
 
 		this.debugger.stdin.write("set " + stringed + " 0x" + value.toString(16) + "\n");
 
-		while(this.CountSentinelInBuffer("\n") < 1) {await sleep(50)}
+		while(this.cli_buffer.indexOf("\nExecuted ") == -1) {await sleep(STD_WAIT)}
 
 		this.update_register_cache = true;
 		this.cli_buffer = "";
@@ -330,7 +333,7 @@ export class CLIInterface extends EventEmitter {
 			this.debugger.stdin.write("break clear " + bp_id_if_exists + "\n");
 		}
 
-		while (this.cli_buffer.indexOf("\nExecuted") == -1) {await sleep(50)}
+		while (this.cli_buffer.indexOf("\nExecuted") == -1) {await sleep(STD_WAIT)}
 
 		if (!this.cli_buffer.startsWith("Executed")) return {value: false, message: "Set BP failed:\n" + this.cli_buffer};
 
@@ -383,36 +386,16 @@ export class CLIInterface extends EventEmitter {
 		return {value: {Points: break_points, MaxId: m_id}};
 	}
 
+	//So basically, input doesn't work?
 	public async StepInstruction(mode: "over" | "in" | "out"): Promise<Optional<string>>{
 		await this.WaitForCLIClear();
 		if (this.debugger == undefined) return {message: "Debugger not running?"};
 
-		this.debugger.stdin.write("step " + mode + "\n");
-		while (this.cli_buffer.indexOf("\nExecuted") == -1) {await sleep(50)} // Don't ask me why, I just randomly decided on 50ms standard
-		console.log(this.cli_buffer)
-
-		let std_output = "";
-
-		if (this.IsErrorInBuffer()){
-			this.cli_buffer = ""
-			return {message: "Error: " + this.GetErrorInBuffer()};
-		}
-
-		let stack_trace_start = this.cli_buffer.indexOf("    0x");
-		if (stack_trace_start == -1) {
-			//console.log(this.cli_buffer)
-			this.cli_buffer = ""
-			return {message: "CLI Error, no backtrace?"};
-		}
-
-		if (stack_trace_start > 0) {
-			std_output = this.cli_buffer.substring(0, stack_trace_start);
-		}
+		//Input doesn't work, only method that I can think of is to suffer, force breakpoints on every single input opcode and handle the inputs manually...
 
 		this.update_register_cache = true;
-
 		this.cli_buffer = "";
-		return {value: std_output};
+		return {value: ""};
 	}
 
 	//Helper Function
@@ -426,7 +409,7 @@ export class CLIInterface extends EventEmitter {
 
 	private async WaitForCLIClear(){
 		while(this.cli_buffer != "") {
-			await sleep(25)
+			await sleep(STD_WAIT * 2)
 		}
 	}
 
@@ -465,5 +448,12 @@ export class CLIInterface extends EventEmitter {
 		
 
 		return count;
+	}
+
+	private IgnoreWarnings(){
+		let w_ind = this.cli_buffer.indexOf("warning: ");
+		while(w_ind != -1 && this.cli_buffer.length > 0) {
+			this.cli_buffer = this.cli_buffer.substring(this.cli_buffer.indexOf("\n")+1);
+		}
 	}
 }
