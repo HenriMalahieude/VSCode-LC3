@@ -23,6 +23,7 @@ export class CLIInterface extends EventEmitter {
 	private CLI_path: vscode.Uri;
 	private CLI_compiler: vscode.Uri;
 	private CLI_simulator: vscode.Uri;
+	private terminal_path: string;
 
 	private cli_buffer: string = "";
 	
@@ -46,18 +47,22 @@ export class CLIInterface extends EventEmitter {
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Windows/");
 			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe"); //Compiled on Windows 10, Intel Processor
 			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
+
+			this.terminal_path = 'powershell.exe'
 		}else if (isMac){
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Mac/");
 
 			//Stand Ins while we don't have them
 			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
 			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
+			this.terminal_path = 'bash'
 		}else{ //Must be linux then...
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Linux/");
 
 			//Stand Ins while we don't have them
 			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
 			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
+			this.terminal_path = 'bash'
 		}
 
 		//NOTE: May need to detect architecture specifically
@@ -110,13 +115,14 @@ export class CLIInterface extends EventEmitter {
 
 	public async LaunchDebuggerCLI(file: vscode.TextDocument): Promise<boolean>{
 		if (this.debugger) return false;
+		const release = await this.debugMutex.acquire();
 
 		let objFile = file.fileName.substring(0, file.fileName.lastIndexOf(".")) + ".obj";
 
 		this.cli_buffer = "";
 
 		try{
-			this.debugger = cp.spawn(this.CLI_simulator.fsPath, ["--print-level=6", objFile]);
+			this.debugger = cp.spawn(this.terminal_path);
 		}catch (e){
 			console.log(e);
 			return false;
@@ -133,17 +139,18 @@ export class CLIInterface extends EventEmitter {
 		})
 
 		this.debugger.addListener('error', (err: Error) => {
-			console.log("Simulator Error: " + err.message);
+			console.log("Console Error: " + err.message);
 		});
+
+		this.debugger.stdin.write(this.CLI_simulator.fsPath + " --print-level=6 " + objFile + "\n");
 
 		//this.debugger.stdin.write("randomize\n"); //To enforce a "grader" like appearance
 		//However, note that the labels/command info will be wiped otherwise
 		
 		//Remove the entrance message (the help message)
-		while(this.CountSentinelInBuffer("\n") < 16){ await sleep(STD_WAIT); }
-
+		while(this.cli_buffer.indexOf("\nExecuted 0 instructions") == -1){ await sleep(STD_WAIT); }
 		this.cli_buffer = "";
-
+		release();
 		return true;
 	}
 
@@ -154,8 +161,6 @@ export class CLIInterface extends EventEmitter {
 		this.outputChannel.appendLine("Closing the CLI Interface. . .");
 		this.outputChannel.show();
 
-		//NOTE: May want to tell the debugger to quit through the stdin instead of just sigterm-ing it
-		this.debugger.stdin.end("quit\n");
 		this.debugger.kill();
 		this.debugger = undefined;
 		this.cli_buffer = "";
@@ -419,11 +424,13 @@ export class CLIInterface extends EventEmitter {
 		//while (this.cli_buffer.indexOf("Executed") == -1) await sleep(STD_WAIT);
 		let std_output = ""
 		let input = true;
-		for (let i = 0; i < 10; i++){
+		for (let i = 0; i < 8; i++){
 			if (this.cli_buffer.indexOf("Executed") != -1){
 				input = false;
 				break;
 			}
+
+			if (this.cli_buffer.indexOf("Input a character> ") != -1) break; //IN was used, so no need to pause
 
 			await sleep(STD_WAIT);
 		}

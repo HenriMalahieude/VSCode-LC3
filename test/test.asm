@@ -4,6 +4,8 @@
 AND R6, R6, #0
 LD R6, PTR2
 
+IN
+
 JSRR R6
 
 HALT
