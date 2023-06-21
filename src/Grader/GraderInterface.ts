@@ -1,3 +1,4 @@
+import * as Mutexer from 'async-mutex'
 import { EventEmitter } from 'stream';
 import * as cp from 'child_process';
 import {promisify} from 'util';
@@ -30,6 +31,7 @@ export class CLIInterface extends EventEmitter {
 	private buffer_in: string[] = ["a"];
 
 	private debugger: cp.ChildProcessWithoutNullStreams | undefined = undefined;
+	private debugMutex: Mutexer.Mutex = new Mutexer.Mutex();
 	
 	constructor(ctx: vscode.ExtensionContext, otc: vscode.OutputChannel){
 		super();
@@ -144,8 +146,10 @@ export class CLIInterface extends EventEmitter {
 		return true;
 	}
 
-	public CloseDebuggerCLI(){
+	public async CloseDebuggerCLI(){
 		if (this.debugger == undefined) return;
+		this.debugMutex.cancel();
+
 		this.outputChannel.appendLine("Closing the CLI Interface. . .");
 		this.outputChannel.show();
 
@@ -160,9 +164,8 @@ export class CLIInterface extends EventEmitter {
 		if (!this.update_register_cache){
 			return {value: this.register_cache};
 		}
-		
-		await this.WaitForCLIClear();
 		if (this.debugger == null) return {message: "Debugger not running?"};
+		const release = await this.debugMutex.acquire();
 		/*
 		> regs
 		R0: 0x0000 (    0)    R1: 0x0000 (    0)    R2: 0x0000 (    0)    R3: 0x0000 (    0)
@@ -197,19 +200,18 @@ export class CLIInterface extends EventEmitter {
 		let mcr_start = this.cli_buffer.indexOf("MSR: ") + "MCR: ".length;
 		registers[10] = Number(this.cli_buffer.substring(mcr_start, mcr_start+6));
 
-		this.cli_buffer = "";
-		
 		this.register_cache = registers;
 		this.update_register_cache = false;
 
+		this.cli_buffer = "";
+		release();
 		return {value: registers};
 	}
 
 	public async GetMemoryRange(start: number, amount:number = 1): Promise<Optional<Map<number, string>>> {
 		if (start + amount > 0xFFFE || start < 0x0) return {message: "Memory Range out of Bounds"};
-
-		await this.WaitForCLIClear();
 		if (this.debugger == null) return {message: "Debugger not running?"};
+		const release = await this.debugMutex.acquire();
 		/* 
 			> mem 0x3000 0x300F
 			0x3000: 0x5DA0 AND R6, R6, #0
@@ -234,16 +236,20 @@ export class CLIInterface extends EventEmitter {
 		while(this.cli_buffer.indexOf("\nExecuted") == -1 && this.cli_buffer.indexOf("invalid address") == -1) {await sleep(STD_WAIT)};
 		
 		if (this.cli_buffer.indexOf("invalid address") != -1){
+			release();
 			return {message: "Memory Range Get: Invalid Address?"};
 		}
 
 		for (let i = 0; i < amount; i++){
-			if (this.cli_buffer == "" && i < amount) return {message: "Reached end of stdin, but we asked for more memory?"};
+			if (this.cli_buffer == "" && i < amount) {
+				release();
+				return {message: "Reached end of stdin, but we asked for more memory?"};
+			}
 
 			this.SkipWhitespace();
 			let addr = Number(this.cli_buffer.substring(0, this.cli_buffer.indexOf(":")));
 			if (Number.isNaN(addr)){
-				console.log(this.cli_buffer)
+				release();
 				return {message: "Memory get " + i.toString() + " failed?"}
 			}
 			memory_range.set(addr, this.cli_buffer.substring(this.cli_buffer.indexOf(" ") + 1, this.cli_buffer.indexOf("\r")));
@@ -252,14 +258,14 @@ export class CLIInterface extends EventEmitter {
 		}
 
 		this.cli_buffer = "";
-		
+		release();
 		return {value: memory_range};
 	}
 
 	public async StackTraceRequest(): Promise<Optional<string[]>> {
 		const amount = 5;
-		await this.WaitForCLIClear();
-		if (this.debugger == undefined) return {message: "Debugger not running?"};
+		if (this.debugger == undefined) return {message: "Debugger not running, cannot trace stack."};
+		const release = await this.debugMutex.acquire();
 		
 		let stack: string[] = [];
 
@@ -268,24 +274,30 @@ export class CLIInterface extends EventEmitter {
 		while (this.cli_buffer.indexOf("\nExecuted ") == -1) await sleep(STD_WAIT);
 
 		for (let i = 0; i < amount; i++){
-			if (this.cli_buffer == "" && i < amount) return {message: "ST context get " + i + " failed?"};
+			if (this.cli_buffer == "" && i < amount) {
+				release();
+				return {message: "ST context get " + i + " failed?"};
+			}
+
 			stack[i] = this.cli_buffer.substring(0, this.cli_buffer.indexOf("\n"))
 
 			this.cli_buffer = this.cli_buffer.substring(this.cli_buffer.indexOf("\n") + 1)
 		}
 
 		this.cli_buffer = "";
+		release();
 		return {value: stack};
 	}
 
 	public async SetRegisters(register_index: number, value: number): Promise<boolean> {
-		await this.WaitForCLIClear();
 		if (this.debugger == undefined || Number.isNaN(value) || Number.isNaN(register_index)) return false;
+		const release = await this.debugMutex.acquire();
 
 		let stringed: string = "";
 		if (register_index <= 7){
 			stringed = "R" + register_index.toString();
 		}else{
+			release();
 			return false; //Though this functionality could be expanded later
 		}
 
@@ -295,18 +307,19 @@ export class CLIInterface extends EventEmitter {
 
 		this.update_register_cache = true;
 		this.cli_buffer = "";
+		release();
 		return true;
 	}
 
 	public async SetBreakpoint(location: number, addBreak: boolean): Promise<Optional<boolean>>{
 		if (location < 0x0 || location > 0xFFFE) return {value: false, message: "Break Point Location out of bounds"}
-
-		await this.WaitForCLIClear(); //Don't really need to do this, but best to keep the standard up
 		if (this.debugger == undefined) return {value: false, message: "Debugger not running?"};
 
 		let break_points = await this.GetBreakpoints();
 		if (break_points.message != undefined || break_points.value == undefined) return {value: false, message: break_points.message};
-		this.cli_buffer = "reserve this for now\n"; //Since other functions wait for the buffer to clear before starting
+		console.log(break_points)
+
+		const release = await this.debugMutex.acquire();
 
 		let bp_id_if_exists = -1;
 		for (let i = 0; i <= break_points.value.MaxId; i++){
@@ -320,39 +333,44 @@ export class CLIInterface extends EventEmitter {
 
 		if (bp_id_if_exists != -1 && addBreak){
 			this.cli_buffer = "";
+			release();
 			return {value: false, message: "Cannot add a breakpoint that already exists"};
 		}else if (bp_id_if_exists == -1 && !addBreak){
 			this.cli_buffer = "";
+			release();
 			return {value: false, message: "Cannot remove a breakpoint that doesn't exist"};
 		}
-
-		this.cli_buffer = ""; //My only worry is that another command could get confused and think it's their turn
+		
+		this.cli_buffer = "";
 		if (addBreak){
-			this.debugger.stdin.write("break add 0x" + location.toString(16) + "\n");
+			this.debugger.stdin.write("break set 0x" + location.toString(16) + "\n");
 		}else {
 			this.debugger.stdin.write("break clear " + bp_id_if_exists + "\n");
 		}
 
-		while (this.cli_buffer.indexOf("\nExecuted") == -1) {await sleep(STD_WAIT)}
+		while (this.cli_buffer.indexOf("Executed") == -1) {await sleep(STD_WAIT)}
 
-		if (!this.cli_buffer.startsWith("Executed")) return {value: false, message: "Set BP failed:\n" + this.cli_buffer};
+		if (this.cli_buffer.startsWith("invalid value")) return {value: false, message: "Set BP failed:\n" + this.cli_buffer};
 
 		this.cli_buffer = "";
+		release();
 		return {value: true};
 	}
 
 	//Returns locations of each breakpoint ([-1, 0x4000, 0x320F 0xFF02])
 	public async GetBreakpoints(): Promise<Optional<{Points: Map<number, number>, MaxId: number}>>{
-		await this.WaitForCLIClear();
 		if (this.debugger == undefined) return {message: "Debugger not running?"};
+		const release = await this.debugMutex.acquire();
 
 		this.debugger.stdin.write("break list\n");
-		while (this.cli_buffer.indexOf("\nExecuted") == -1) {await sleep(50)} //Wait until it has listed everything
-		
+
+		//Note: If there is nothing in the list, then "/nExecuted" won't exist because there ain't no "\n"
+		while (this.cli_buffer.indexOf("Executed") == -1) {await sleep(STD_WAIT)} //Wait until it has listed everything
+
 		let new_line_count = this.CountSentinelInBuffer("\n") - 1; //Remove the count for "Executed"
 		let break_points: Map<number, number> = new Map;
-		let m_id: number = 0;
- 
+		let m_id: number = -1;
+
 		if (new_line_count > 0){ //each new line represents a breakpoint
 			let temp: string = "" + this.cli_buffer; //Ensure copy
 			while (temp != ""){
@@ -360,12 +378,14 @@ export class CLIInterface extends EventEmitter {
 
 				if (!temp.startsWith("#")){
 					this.cli_buffer = ""
+					release();
 					return {message: "GetBp: Invalid CLI response:\n"+temp};
 				}
 
 				let id = Number(temp.substring(1, 2)); 
 				if (Number.isNaN(id)) {
 					this.cli_buffer = ""
+					release();
 					return {message: "GetBp: Invalid ID? (" + temp.substring(1, 2) + ")"};
 				}
 				
@@ -374,6 +394,7 @@ export class CLIInterface extends EventEmitter {
 				let loc = Number(temp.substring(4, 10));
 				if (Number.isNaN(loc)){
 					this.cli_buffer = ""
+					release();
 					return {message: "GetBp: Invalid Location? (" + temp.substring(4, 10) + ")"};
 				}
 
@@ -383,18 +404,19 @@ export class CLIInterface extends EventEmitter {
 		}
 
 		this.cli_buffer = "";
+		release();
 		return {value: {Points: break_points, MaxId: m_id}};
 	}
 
 	//So basically, input doesn't work?
 	public async StepInstruction(mode: "over" | "in" | "out"): Promise<Optional<string>>{
-		await this.WaitForCLIClear();
 		if (this.debugger == undefined) return {message: "Debugger not running?"};
-
+		const release = await this.debugMutex.acquire();
 		//Input doesn't work, only method that I can think of is to suffer, force breakpoints on every single input opcode and handle the inputs manually...
 
 		this.update_register_cache = true;
 		this.cli_buffer = "";
+		release();
 		return {value: ""};
 	}
 
@@ -405,12 +427,6 @@ export class CLIInterface extends EventEmitter {
 		this.cli_buffer = this.cli_buffer.substring(1);
 
 		this.SkipWhitespace();
-	}
-
-	private async WaitForCLIClear(){
-		while(this.cli_buffer != "") {
-			await sleep(STD_WAIT * 2)
-		}
 	}
 
 	private IsErrorInBuffer(): boolean {

@@ -28,6 +28,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 	private memoryHead: number = -1;
 
 	private bp_cache: DebugProtocol.Breakpoint[] = [];
+	private input_force_bp: DebugProtocol.Breakpoint[] = [];
 
 	constructor(ctx: vscode.ExtensionContext, otc: vscode.OutputChannel){
 		super();
@@ -54,7 +55,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 	}
 
 	protected attachRequest(response: DebugProtocol.AttachResponse, args: ILaunchRequestArguments) {
-		this.launchRequest(response, args);
+		return this.launchRequest(response, args);
 	}
 
 	protected async launchRequest(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
@@ -70,6 +71,24 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 				let succ: boolean = await this.grader.LaunchDebuggerCLI(td);
 
 				if (!succ) return this.graderError(response, "Could not launch the CLI?");
+
+				//TODO: Add forced breakpoints in for Inputs
+
+				this.grader.on("stdin_expect", () => {
+					vscode.window.showInputBox({
+						title: 'LC3-Simulator Input Request',
+						placeHolder: 'a',//Hello, World!
+						prompt: 'Single char \'a\' or full string \'Hello, World!\', Escape character (\\) not supported.',
+						value: '',
+						ignoreFocusOut: true,
+					}).then((item: string | undefined) => {
+						if (item != undefined){
+							this.grader.FillStdInBuffer(item);
+						}else{
+							this.grader.emit("stdin_expect"); //We don't want them running away
+						}
+					})
+				})
 
 				this.outputChannel.appendLine("\n");
 				this.sendEvent(new DAP.StoppedEvent("launch", 1))
@@ -92,8 +111,6 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		response.body = {
 			breakpoints: []
 		}
-		
-		console.log(args, this.file?.uri.fsPath);
 
 		if (locations && args.source && args.source.path && args.source.path == this.file.uri.fsPath){
 
@@ -114,6 +131,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 
 					if (bp.line){
 						let loc = this.GetSourceLineAddress(bp.line);
+						console.log("Remove: 0x" + loc.toString(16))
 
 						if (loc > 0x0){ //A valid Location we set beforehand
 							let remove_succ_p = await this.grader.SetBreakpoint(loc, false);
@@ -144,6 +162,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 					
 					if (bp.line){
 						let loc = this.GetSourceLineAddress(bp.line);
+						console.log("Add: 0x" + loc.toString(16))
 
 						if (loc > 0x0){
 							let add_succ_p = await this.grader.SetBreakpoint(loc, true);
@@ -153,20 +172,20 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 							}
 							this.bp_cache.push({verified: true, line: bp.line, id: bp.line, instructionReference: "0x" + loc.toString(16)});
 						}else{
-							this.bp_cache.push({verified: false, message: "Not a valid mem location", line: bp.line, id: bp.line});
+							this.bp_cache.push({verified: false, message: "Not a valid memory location", line: bp.line, id: bp.line});
 						}
 					}
 				}
 			}
-
-			response.body = {
-				breakpoints: this.bp_cache, //I hope this gets copied over, I'm a noob for this type of memory management in Typescript. Reference? Or Value? No Clue
-			}
 		}
+
+		response.body = {
+			breakpoints: this.bp_cache, //I hope this gets copied over, I'm a noob for this type of memory management in Typescript. Reference? Or Value? No Clue
+		}
+
 		return this.sendResponse(response);
 	}
 	
-	//NOTE: This is required to be able to test...
 	protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments | undefined) {
 		let promise_stack = await this.grader.StackTraceRequest();
 		if (promise_stack.value == undefined || promise_stack.message != undefined) {
@@ -174,6 +193,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		}
 
 		let stack = (promise_stack.value) ? promise_stack.value : ["Error Getting Stack Trace"];
+		//console.log(stack)
 
 		response.body = {
 			stackFrames: []
@@ -184,6 +204,8 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 		}
 
 		response.body.totalFrames = stack.length;
+
+		//console.log(response)
 
 		this.sendResponse(response);
 	}
@@ -209,7 +231,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 	protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments | undefined) {
 		response.body = {
 			scopes: [
-				{name: "Registers", variablesReference: 1, expensive: true},
+				{name: "Registers", variablesReference: 1, expensive: false},
 				{name: "Memory", variablesReference: 2, expensive: true},
 			]
 		};
@@ -349,8 +371,9 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 			return this.graderError(response, std_output.message)
 		}
 
-		if (std_output.value != ""){
-			this.outputChannel.append("");
+		if (std_output.value != "" && std_output.value != undefined){
+			this.outputChannel.append(std_output.value);
+			this.outputChannel.show();
 		}
 
 		this.sendEvent(new DAP.StoppedEvent("step", 1))
@@ -385,23 +408,35 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 	private GetSourceLineAddress(source_line: number): number {
 		if (this.file == undefined) return -1;
 
-		let txt = this.file.lineAt(source_line).text.trim().toLocaleUpperCase();
-		if (startsWithCommand(txt.split(" ")[0] + " ")) {
+		function detectCommand(line: number, file: vscode.TextDocument): boolean{
+			let txt = file.lineAt(line).text.trim().toLocaleUpperCase();
+			let command = txt.split(" ")
+			if (!startsWithCommand(command[0] + " ")) { //For Labels that have a command following it
+				command.shift()
+			}
+
+			return command.length > 0 && startsWithCommand(command[0] + " ");
+		}
+
+		let isCommand = detectCommand(source_line-1, this.file)
+		if (isCommand) {
 			//Start counting up
 			let commandsAbove = 0;
-			let at = source_line;
+			let at = source_line-1;
 			while (at > 0){
 				at--;
-				let nTxt = this.file.lineAt(at).text.trimEnd().toLocaleLowerCase();
-				if (startsWithCommand(nTxt.split(" ")[0] + " ")){
+				let nTxt = this.file.lineAt(at).text.trim().toLocaleUpperCase();
+
+				if (detectCommand(at, this.file)){
 					commandsAbove++;
 					continue;
 				}
 
 				if (nTxt.startsWith(".END")) return -1;
 				if (nTxt.startsWith(".ORIG")) {
-					let nn = Number("0"+nTxt.split(" ")[1]) + commandsAbove;
+					let nn = Number("0x"+nTxt.split(" ")[1].substring(1)); //convert "x3000" to number
 					if (!Number.isNaN(nn)){
+						console.log(nn, commandsAbove)
 						return nn + commandsAbove;
 					}
 
