@@ -2,9 +2,6 @@
 .orig x3000
 
 AND R6, R6, #0
-AND R0, R0, #0
-
-AND R6, R6, #0
 LD R6, PTR2
 
 JSRR R6

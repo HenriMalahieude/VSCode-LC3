@@ -76,7 +76,7 @@ export class LC3GraderAdapter extends DAP.DebugSession {
 
 				this.grader.on("stdin_expect", () => {
 					vscode.window.showInputBox({
-						title: 'LC3-Simulator Input Request',
+						title: 'LC3-Simulator Input Buffer Fill Request',
 						placeHolder: 'a',//Hello, World!
 						prompt: 'Single char \'a\' or full string \'Hello, World!\', Escape character (\\) not supported.',
 						value: '',

@@ -269,7 +269,7 @@ export class CLIInterface extends EventEmitter {
 		
 		let stack: string[] = [];
 
-		this.debugger.stdin.write("list " + (Math.floor(5/2)).toString() + "\n");
+		this.debugger.stdin.write("list " + (Math.floor(amount/2)).toString() + "\n");
 
 		while (this.cli_buffer.indexOf("\nExecuted ") == -1) await sleep(STD_WAIT);
 
@@ -414,10 +414,40 @@ export class CLIInterface extends EventEmitter {
 		const release = await this.debugMutex.acquire();
 		//Input doesn't work, only method that I can think of is to suffer, force breakpoints on every single input opcode and handle the inputs manually...
 
+		this.debugger.stdin.write("step " + mode + "\n");
+		//while (this.cli_buffer.indexOf("Executed") == -1) await sleep(STD_WAIT);
+		let std_output = ""
+		let input = true;
+		for (let i = 0; i < 10; i++){
+			if (this.cli_buffer.indexOf("Executed") != -1){
+				input = false;
+				break;
+			}
+
+			await sleep(STD_WAIT);
+		}
+
+		if (input == true){
+			this.emit("stdin_expect");
+			console.log("rbuh " + this.buffer_in.length)
+			while (this.buffer_in.length <= 0) await sleep(STD_WAIT);
+			let char = this.buffer_in.shift()?.charAt(0)
+			console.log(char)
+
+			this.debugger.stdin.write(char);		
+
+			while (this.cli_buffer.indexOf("Executed") == -1){console.log(this.cli_buffer); await sleep(STD_WAIT) }
+		}
+
+		let tt = this.cli_buffer.indexOf("    0x");
+		if (tt != -1){
+			std_output = this.cli_buffer.substring(0, tt);
+		}
+
 		this.update_register_cache = true;
 		this.cli_buffer = "";
 		release();
-		return {value: ""};
+		return {value: std_output};
 	}
 
 	//Helper Function
