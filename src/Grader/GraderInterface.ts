@@ -1,3 +1,4 @@
+//import * as pty from 'node-pty'; //Wouldn't run on windows
 import * as Mutexer from 'async-mutex'
 import { EventEmitter } from 'stream';
 import * as cp from 'child_process';
