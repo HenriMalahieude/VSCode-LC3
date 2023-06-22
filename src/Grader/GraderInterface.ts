@@ -164,6 +164,7 @@ export class CLIInterface extends EventEmitter {
 		this.debugger.kill();
 		this.debugger = undefined;
 		this.cli_buffer = "";
+		this.buffer_in = [];
 	}
 
 	public async GetRegisters(): Promise<Optional<number[]>> {
