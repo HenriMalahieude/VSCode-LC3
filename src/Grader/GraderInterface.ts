@@ -60,8 +60,8 @@ export class CLIInterface extends EventEmitter {
 			this.CLI_path = vscode.Uri.joinPath(this.CLI_path, "./CLIs/Linux/");
 
 			//Stand Ins while we don't have them
-			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler.exe");
-			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator.exe");
+			this.CLI_compiler = vscode.Uri.joinPath(this.CLI_path, "./assembler");
+			this.CLI_simulator = vscode.Uri.joinPath(this.CLI_path, "./simulator");
 			this.terminal_path = 'bash'
 		}
 
